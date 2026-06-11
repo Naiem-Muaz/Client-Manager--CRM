@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { errMsg } from '../../lib/errMsg';
 import { X, Plus, Trash2, Loader2 } from 'lucide-react';
 import { createInvoice } from '../../hooks/useInvoices';
 
@@ -40,7 +41,7 @@ export function InvoiceCreateModal({ clientId, clientName, onClose, onCreated }:
         subtotal, vatAmount, totalAmount: total, status, notes,
       });
       onCreated();
-    } catch (e: any) { setError(e?.error || e?.message || 'Failed to create invoice'); setSaving(false); }
+    } catch (e: any) { setError(errMsg(e, 'Failed to create invoice')); setSaving(false); }
   };
 
   const field = 'px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-100';

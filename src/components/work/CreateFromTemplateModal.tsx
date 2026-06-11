@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { errMsg } from '../../lib/errMsg';
 import { X, Search, Loader2, ChevronLeft, FileText, Sparkles } from 'lucide-react';
 import { useJobTemplates, JobTemplate, createJob, Job, JobStatus } from '../../hooks/useJobs';
 import { useClients } from '../../hooks/useClients';
@@ -87,7 +88,7 @@ export function CreateFromTemplateModal({ initialStatus, onClose, onCreated }: {
       });
       onCreated(job);
     } catch (err: any) {
-      setError(err?.error || err?.message || 'Failed to create job');
+      setError(errMsg(err, 'Failed to create job'));
       setSaving(false);
     }
   };

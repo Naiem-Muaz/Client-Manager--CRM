@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { errMsg } from '../../lib/errMsg';
 import { CalendarClock, Check, Loader2 } from 'lucide-react';
 import { patchClient } from '../../hooks/useClients';
 import { useTeamMembers } from '../../hooks/useTeam';
@@ -36,7 +37,7 @@ export function ClientComplianceDatesCard({ client, onSaved }: { client: any; on
       onSaved?.();
       setTimeout(() => setSaved(false), 2500);
     } catch (e: any) {
-      setError(e?.error || e?.message || 'Failed to save');
+      setError(errMsg(e, 'Failed to save'));
     } finally {
       setSaving(false);
     }

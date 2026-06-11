@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { errMsg } from '../../lib/errMsg';
 import { X, Send, Lock, Mail, Paperclip, ChevronDown, AlertCircle, Loader2 } from 'lucide-react';
 import { Communication, MessageType, EMAIL_TEMPLATES } from '../../types/CommunicationTypes';
 
@@ -42,7 +43,7 @@ export function ComposeMessageModal({ onClose, onSend, clientName }: Props) {
         try {
             await onSend(newMessage);
         } catch (err: any) {
-            setError(err?.error || err?.message || 'Failed to send message. Please try again.');
+            setError(errMsg(err, 'Failed to send message. Please try again.'));
             setSending(false);
         }
     };

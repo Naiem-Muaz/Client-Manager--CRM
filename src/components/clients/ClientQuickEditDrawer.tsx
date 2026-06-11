@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { errMsg } from '../../lib/errMsg';
 import { X, Loader2 } from 'lucide-react';
 import { patchClient } from '../../hooks/useClients';
 import { useTeamMembers } from '../../hooks/useTeam';
@@ -37,7 +38,7 @@ export function ClientQuickEditDrawer({ client, onClose, onSaved }: { client: an
         risk_level: riskLevel, mtd_status: mtdStatus, income_band: incomeBand || null, tags,
       });
       onSaved();
-    } catch (e: any) { setError(e?.error || e?.message || 'Failed to save'); setSaving(false); }
+    } catch (e: any) { setError(errMsg(e, 'Failed to save')); setSaving(false); }
   };
 
   return (

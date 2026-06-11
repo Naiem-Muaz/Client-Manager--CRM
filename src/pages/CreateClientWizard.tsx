@@ -9,6 +9,7 @@ import { createClient, patchClient } from '../hooks/useClients';
 import { useJobTemplates, createJob } from '../hooks/useJobs';
 import { useTeamMembers } from '../hooks/useTeam';
 import { searchCompanies, lookupCompany } from '../api/companiesHouse';
+import { errMsg } from '../lib/errMsg';
 
 // ── Static config ──────────────────────────────────────────────────────────────
 type EntityType = 'sole-trader' | 'limited-company' | 'partnership' | 'llp' | 'trust' | 'charity';
@@ -269,7 +270,7 @@ export function CreateClientWizard() {
       setToast(`Client created with ${jobsCreated} job${jobsCreated === 1 ? '' : 's'}`);
       setTimeout(() => navigate(`/clients/${newId}`), 800); // BUG FIX: redirect to the new client, not /mtd
     } catch (err: any) {
-      setSubmitError(err?.error || err?.message || 'Failed to create client');
+      setSubmitError(errMsg(err, 'Failed to create client'));
       setSubmitting(false);
     }
   };

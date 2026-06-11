@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { errMsg } from '../../lib/errMsg';
 import { Upload, X, FileText, Tag, AlertCircle } from 'lucide-react';
 import { DocumentCategory, FOLDERS, VaultDocument } from '../../types/DocumentTypes';
 import { uploadDocument } from '../../hooks/useDocuments';
@@ -63,7 +64,7 @@ export function DocumentUploadModal({ category, clientId, initialFile, onClose, 
 
             onUpload(newDoc);
         } catch (err: any) {
-            setError(err?.error || err?.message || 'Upload failed. Please try again.');
+            setError(errMsg(err, 'Upload failed. Please try again.'));
             setUploading(false);
         }
     };

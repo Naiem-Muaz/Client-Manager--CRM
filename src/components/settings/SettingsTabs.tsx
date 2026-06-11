@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { errMsg } from '../../lib/errMsg';
 import { Shield, Zap, AlertTriangle, Users, Lock, X, Loader2 } from 'lucide-react';
 import { useTeamMembers, inviteTeamMember, updateTeamMember, TeamMember, TEAM_ROLES } from '../../hooks/useTeam';
 import { useAutomationRules, toggleAutomationRule } from '../../hooks/useAutomationRules';
@@ -100,7 +101,7 @@ function InviteModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
                 onDone();
             }
         }
-        catch (e: any) { setError(e?.error || e?.message || 'Failed to send invite'); setSaving(false); }
+        catch (e: any) { setError(errMsg(e, 'Failed to send invite')); setSaving(false); }
     };
     return (
         <Modal title="Invite team member" onClose={warning ? onDone : onClose} onSubmit={submit} saving={saving} submitLabel="Send invite" error={error}>
@@ -131,7 +132,7 @@ function EditMemberModal({ member, onClose, onDone }: { member: TeamMember; onCl
     const submit = async () => {
         setSaving(true); setError(null);
         try { await updateTeamMember(member.id, { fullName, role, active }); onDone(); }
-        catch (e: any) { setError(e?.error || e?.message || 'Failed to save'); setSaving(false); }
+        catch (e: any) { setError(errMsg(e, 'Failed to save')); setSaving(false); }
     };
     return (
         <Modal title="Edit team member" onClose={onClose} onSubmit={submit} saving={saving} submitLabel="Save" error={error}>
