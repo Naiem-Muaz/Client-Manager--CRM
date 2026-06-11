@@ -8,7 +8,7 @@ export interface HealthBreakdown {
   documentCompleteness: number;
   openOverdueTasks: number;
   mtdStatus: number;
-  communicationRecency: number;
+  communicationRecency: number | null; // days since last communication; null = never
 }
 export interface ClientHealth { score: number; grade: HealthGrade; breakdown: HealthBreakdown }
 

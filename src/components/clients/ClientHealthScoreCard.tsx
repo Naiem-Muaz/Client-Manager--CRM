@@ -11,10 +11,10 @@ const BARS: { key: keyof HealthBreakdown; label: string; max: number; tip: strin
 ];
 
 // Convert a raw breakdown value into its earned points (the breakdown stores some raw counts).
-function pointsFor(key: keyof HealthBreakdown, raw: number): number {
-  if (key === 'openOverdueTasks') return Math.max(0, 20 - raw * 5);
-  if (key === 'communicationRecency') return raw < 0 ? 0 : raw <= 30 ? 10 : raw <= 90 ? 5 : 0;
-  return raw; // deadlineCompliance / documentCompleteness / mtdStatus already in points
+function pointsFor(key: keyof HealthBreakdown, raw: number | null): number {
+  if (key === 'openOverdueTasks') return Math.max(0, 20 - (raw ?? 0) * 5);
+  if (key === 'communicationRecency') return raw == null ? 0 : raw <= 30 ? 10 : raw <= 90 ? 5 : 0;
+  return raw ?? 0; // deadlineCompliance / documentCompleteness / mtdStatus already in points
 }
 
 export function ClientHealthScoreCard({ clientId }: { clientId: string }) {
@@ -53,7 +53,7 @@ export function ClientHealthScoreCard({ clientId }: { clientId: string }) {
               const raw = health.breakdown[b.key];
               const pts = pointsFor(b.key, raw);
               const pct = Math.round((pts / b.max) * 100);
-              const detail = b.isCount ? `${raw} overdue` : b.isDays ? (raw < 0 ? 'never' : `${raw}d ago`) : `${pts}/${b.max}`;
+              const detail = b.isCount ? `${raw} overdue` : b.isDays ? (raw == null ? 'never' : `${raw}d ago`) : `${pts}/${b.max}`;
               return (
                 <div key={b.key} title={b.tip}>
                   <div className="flex justify-between text-xs mb-0.5">
