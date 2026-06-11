@@ -86,14 +86,30 @@ function InviteModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
     const [role, setRole] = useState('accountant');
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [warning, setWarning] = useState<string | null>(null);
     const submit = async () => {
         if (!email.trim()) return;
-        setSaving(true); setError(null);
-        try { await inviteTeamMember({ email: email.trim(), role }); onDone(); }
+        setSaving(true); setError(null); setWarning(null);
+        try {
+            const res = await inviteTeamMember({ email: email.trim(), role });
+            if (res && res.emailSent === false) {
+                // Saved but no email sent — keep modal open with a warning instead of closing on success.
+                setWarning('Invitation saved but email could not be sent — please share access manually.');
+                setSaving(false);
+            } else {
+                onDone();
+            }
+        }
         catch (e: any) { setError(e?.error || e?.message || 'Failed to send invite'); setSaving(false); }
     };
     return (
-        <Modal title="Invite team member" onClose={onClose} onSubmit={submit} saving={saving} submitLabel="Send invite" error={error}>
+        <Modal title="Invite team member" onClose={warning ? onDone : onClose} onSubmit={submit} saving={saving} submitLabel="Send invite" error={error}>
+            {warning && (
+                <div className="flex items-start gap-2 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    <AlertTriangle size={16} className="shrink-0 mt-0.5 text-amber-600" />
+                    <span>{warning}</span>
+                </div>
+            )}
             <Labeled label="Email">
                 <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="colleague@firm.co.uk" className={inputCls} />
             </Labeled>

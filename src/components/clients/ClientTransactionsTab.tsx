@@ -1,7 +1,9 @@
 
 import React, { useState } from 'react';
 import { useClientTransactions, reviewTransaction, updateTransaction } from '../../hooks/useClients';
-import { FileText, ArrowDownLeft, ArrowUpRight, CheckCircle, Edit3, Loader2 } from 'lucide-react';
+import { useInvoices } from '../../hooks/useInvoices';
+import { InvoiceCreateModal } from '../billing/InvoiceCreateModal';
+import { FileText, ArrowDownLeft, ArrowUpRight, CheckCircle, Edit3, Loader2, Plus, Receipt } from 'lucide-react';
 
 const HMRC_CATEGORIES = [
   'Cost of goods',
@@ -21,10 +23,14 @@ const STATUS_BADGES: Record<string, { bg: string; text: string }> = {
   finalised: { bg: 'bg-emerald-100', text: 'text-emerald-700' },
 };
 
-export function ClientTransactionsTab({ clientId }: { clientId: string }) {
+export function ClientTransactionsTab({ clientId, clientName }: { clientId: string; clientName?: string }) {
   const { transactions, isLoading, isError, mutate } = useClientTransactions(clientId);
+  const { invoices: rawInvoices } = useInvoices(clientId);
+  const invoices = Array.isArray(rawInvoices) ? rawInvoices : [];
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [showInvoice, setShowInvoice] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
 
   const handleReview = async (txnId: string) => {
     setReviewingId(txnId);
@@ -51,7 +57,39 @@ export function ClientTransactionsTab({ clientId }: { clientId: string }) {
   if (isLoading) return <div className="p-8 text-center text-slate-500 animate-pulse">Loading transactions...</div>;
   if (isError) return <div className="p-8 text-red-600">Failed to load transactions.</div>;
 
+  const money = (n: any) => `£${(typeof n === 'number' ? n : parseFloat(n) || 0).toFixed(2)}`;
+
   return (
+   <div className="space-y-6">
+    {/* Invoices */}
+    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+      <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50/50">
+        <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2"><Receipt size={20} className="text-blue-500" /> Invoices</h3>
+        <button onClick={() => setShowInvoice(true)} className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">
+          <Plus size={15} /> New Invoice
+        </button>
+      </div>
+      {invoices.length === 0 ? (
+        <p className="px-6 py-8 text-center text-slate-400 text-sm">No invoices yet.</p>
+      ) : (
+        <table className="w-full text-left text-sm">
+          <thead><tr className="border-b border-slate-200 text-slate-500 uppercase text-[10px] tracking-wider font-bold bg-slate-50/30">
+            <th className="px-6 py-3">Number</th><th className="px-6 py-3">Date</th><th className="px-6 py-3 text-right">Total</th><th className="px-6 py-3 text-center">Status</th>
+          </tr></thead>
+          <tbody className="divide-y divide-slate-100">
+            {invoices.map((inv: any) => (
+              <tr key={inv.id} className="hover:bg-slate-50">
+                <td className="px-6 py-3 font-medium text-slate-900">{inv.invoice_number}</td>
+                <td className="px-6 py-3 text-slate-600">{inv.invoice_date ? new Date(inv.invoice_date).toLocaleDateString('en-GB') : '-'}</td>
+                <td className="px-6 py-3 text-right font-semibold">{money(inv.total_amount)}</td>
+                <td className="px-6 py-3 text-center"><span className="px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600 capitalize">{inv.status}</span></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
       <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50/50">
         <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
@@ -159,5 +197,16 @@ export function ClientTransactionsTab({ clientId }: { clientId: string }) {
         </table>
       </div>
     </div>
+
+    {showInvoice && (
+      <InvoiceCreateModal
+        clientId={clientId}
+        clientName={clientName}
+        onClose={() => setShowInvoice(false)}
+        onCreated={() => { setShowInvoice(false); setToast('Invoice created'); setTimeout(() => setToast(null), 3000); }}
+      />
+    )}
+    {toast && <div className="fixed bottom-6 right-6 z-50 px-4 py-3 rounded-lg shadow-lg text-sm font-medium text-white bg-emerald-600">{toast}</div>}
+   </div>
   );
 }

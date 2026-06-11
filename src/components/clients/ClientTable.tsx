@@ -1,16 +1,46 @@
 import React, { useState, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { MoreHorizontal, Eye, Archive, User, ChevronUp, ChevronDown } from 'lucide-react';
-import { archiveClient } from '../../hooks/useClients';
+import { MoreHorizontal, Eye, Archive, User, ChevronUp, ChevronDown, Pencil, UserPlus, Tag, Download, X } from 'lucide-react';
+import { archiveClient, patchClient } from '../../hooks/useClients';
+import { useTeamMembers } from '../../hooks/useTeam';
 import { GRADE_META, HealthGrade } from '../../hooks/useHealth';
+import { ClientQuickEditDrawer } from './ClientQuickEditDrawer';
 
 interface Props { clients: any[]; healthScores?: Record<string, { score: number; grade: HealthGrade }> }
 
 export function ClientTable({ clients, healthScores = {} }: Props) {
     const navigate = useNavigate();
+    const { members } = useTeamMembers();
     const [openMenuId, setOpenMenuId] = useState<string | null>(null);
     const [archivingId, setArchivingId] = useState<string | null>(null);
     const [healthSort, setHealthSort] = useState<'asc' | 'desc' | null>(null);
+    const [selected, setSelected] = useState<Set<string>>(new Set());
+    const [editing, setEditing] = useState<any | null>(null);
+    const [bulkBusy, setBulkBusy] = useState<string | null>(null);
+
+    const toggleSelect = (id: string) => setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    const selectedClients = () => clients.filter(c => selected.has(c.id));
+
+    const runBulk = async (label: string, fn: (c: any) => Promise<any>) => {
+        const targets = selectedClients();
+        let done = 0;
+        setBulkBusy(`${label} 0/${targets.length}`);
+        await Promise.all(targets.map(c => fn(c).then(() => { done++; setBulkBusy(`${label} ${done}/${targets.length}`); }).catch(() => { done++; })));
+        setBulkBusy(null);
+        setSelected(new Set());
+    };
+
+    const bulkAssign = (staffId: string) => runBulk('Assigning', c => patchClient(c.id, { assigned_staff_id: staffId || null }));
+    const bulkAddTag = (tag: string) => runBulk('Tagging', c => patchClient(c.id, { addTag: tag }));
+    const bulkArchive = () => { if (!window.confirm(`Archive ${selected.size} client(s)?`)) return; return runBulk('Archiving', c => patchClient(c.id, { status: 'archived' })); };
+    const bulkExport = () => {
+        const rows = selectedClients();
+        const headers = ['id', 'name', 'entityType', 'status', 'riskScore'];
+        const esc = (v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+        const csv = [headers.join(','), ...rows.map(c => [c.id, c.legalName, c.entityType, c.status, c.riskScore].map(esc).join(','))].join('\n');
+        const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+        const a = document.createElement('a'); a.href = url; a.download = `clients-${new Date().toISOString().slice(0, 10)}.csv`; a.click(); URL.revokeObjectURL(url);
+    };
 
     const displayClients = useMemo(() => {
         if (!healthSort) return clients;
@@ -49,11 +79,33 @@ export function ClientTable({ clients, healthScores = {} }: Props) {
         );
     }
 
+    const allSelected = clients.length > 0 && clients.every(c => selected.has(c.id));
+
     return (
+      <>
+        {selected.size > 0 && (
+            <div className="flex flex-wrap items-center gap-3 mb-3 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl">
+                <span className="text-sm font-semibold text-blue-800">{selected.size} selected</span>
+                {bulkBusy && <span className="text-xs text-blue-600 inline-flex items-center gap-1">{bulkBusy}…</span>}
+                <div className="flex-1" />
+                <select onChange={e => { if (e.target.value) { bulkAssign(e.target.value); e.target.value = ''; } }} defaultValue="" className="px-2 py-1.5 border border-slate-200 rounded-lg text-sm bg-white">
+                    <option value="" disabled>Assign staff…</option>
+                    <option value="">Unassign</option>
+                    {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                </select>
+                <button onClick={() => { const t = window.prompt('Tag to add:'); if (t && t.trim()) bulkAddTag(t.trim()); }} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm hover:bg-slate-50"><Tag size={14} /> Add tag</button>
+                <button onClick={bulkArchive} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm text-red-600 hover:bg-red-50"><Archive size={14} /> Archive</button>
+                <button onClick={bulkExport} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm hover:bg-slate-50"><Download size={14} /> Export</button>
+                <button onClick={() => setSelected(new Set())} className="text-slate-400 hover:text-slate-600"><X size={16} /></button>
+            </div>
+        )}
         <div className="bg-bg-surface border border-divider rounded-xl shadow-sm overflow-hidden">
             <table className="w-full text-left border-collapse">
                 <thead>
                     <tr className="bg-bg-main border-b border-divider text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                        <th className="px-4 py-4 w-10">
+                            <input type="checkbox" checked={allSelected} onChange={() => setSelected(allSelected ? new Set() : new Set(clients.map(c => c.id)))} className="w-4 h-4 text-blue-600 rounded" />
+                        </th>
                         <th className="px-6 py-4">Client</th>
                         <th className="px-6 py-4">Status</th>
                         <th className="px-6 py-4">HMRC</th>
@@ -78,6 +130,9 @@ export function ClientTable({ clients, healthScores = {} }: Props) {
 
                         return (
                         <tr key={client.id} className="hover:bg-bg-main/50 transition-colors group cursor-pointer relative">
+                            <td className="px-4 py-4 relative z-20 w-10">
+                                <input type="checkbox" checked={selected.has(client.id)} onChange={() => toggleSelect(client.id)} className="w-4 h-4 text-blue-600 rounded" />
+                            </td>
                             <td className="px-6 py-4">
                                 <Link to={`/clients/${client.id}`} className="absolute inset-0 z-10" />
                                 <div className="flex items-center gap-3">
@@ -150,6 +205,12 @@ export function ClientTable({ clients, healthScores = {} }: Props) {
                                                     <Eye size={15} className="text-slate-400" /> View
                                                 </button>
                                                 <button
+                                                    onClick={(e) => { e.stopPropagation(); setOpenMenuId(null); setEditing(client); }}
+                                                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                                                >
+                                                    <Pencil size={15} className="text-slate-400" /> Edit
+                                                </button>
+                                                <button
                                                     onClick={(e) => { e.stopPropagation(); handleArchive(client); }}
                                                     className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
                                                 >
@@ -165,5 +226,7 @@ export function ClientTable({ clients, healthScores = {} }: Props) {
                 </tbody>
             </table>
         </div>
+        {editing && <ClientQuickEditDrawer client={editing} onClose={() => setEditing(null)} onSaved={() => setEditing(null)} />}
+      </>
     );
 }

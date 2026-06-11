@@ -2,9 +2,23 @@ import React, { useState, useMemo } from 'react';
 import { StickyNote, Shield, Briefcase, Pin, PinOff, Trash2, Pencil, Loader2, Check, X } from 'lucide-react';
 import { useClientNotes, addNote, updateNote, deleteNote, ClientNote } from '../../hooks/useNotes';
 import { useAuditLogs } from '../../hooks/useAudit';
-import { useJobs } from '../../hooks/useJobs';
+import { useJobEvents, JobEvent } from '../../hooks/useJobs';
 import { useAuth } from '../../context/AuthContext';
 import { STATUS_META } from '../work/TaskDetailModal';
+
+function describeJobEvent(e: JobEvent): string {
+  const label = (s: string | null) => (s && (STATUS_META as any)[s]?.label) || s || '';
+  switch (e.eventType) {
+    case 'created': return `created job “${e.toValue || e.jobTitle}”`;
+    case 'status_changed': return `moved “${e.jobTitle}” from ${label(e.fromValue)} to ${label(e.toValue)}`;
+    case 'assigned': return `assigned “${e.jobTitle}” to ${e.toValue}`;
+    case 'comment_added': return `commented on “${e.jobTitle}”`;
+    case 'time_logged': { const m = e.metadata?.minutes || 0; return `logged ${(m / 60).toFixed(1)}h on “${e.jobTitle}”`; }
+    case 'checklist_step_toggled': return `completed “${e.toValue}” on “${e.jobTitle}”`;
+    case 'completed': return `completed “${e.jobTitle}”`;
+    default: return `updated “${e.jobTitle}”`;
+  }
+}
 
 type FeedItem = {
   id: string;
@@ -33,7 +47,7 @@ export function ActivityFeed({ clientId }: { clientId: string }) {
   const { user } = useAuth();
   const { notes, isLoading: notesLoading, mutate: mutateNotes } = useClientNotes(clientId);
   const { logs } = useAuditLogs(clientId);
-  const { jobs } = useJobs({ clientId });
+  const { events } = useJobEvents(clientId);
 
   const [body, setBody] = useState('');
   const [isInternal, setIsInternal] = useState(true);
@@ -48,13 +62,13 @@ export function ActivityFeed({ clientId }: { clientId: string }) {
       const ts = l.timestamp || l.created_at || l.createdAt;
       out.push({ id: `audit-${l.id || i}`, kind: 'audit', ts: ts ? new Date(ts).getTime() : 0, authorName: l.user || l.actor || 'System', title: l.action || l.description || l.event_type || 'Activity' });
     });
-    (jobs || []).forEach(j => out.push({ id: `job-${j.id}`, kind: 'job', ts: new Date(j.updatedAt).getTime(), authorName: j.assigneeName || 'Unassigned', title: `${j.title} — ${STATUS_META[j.status]?.label || j.status}` }));
+    (events || []).forEach(e => out.push({ id: `job-${e.id}`, kind: 'job', ts: new Date(e.createdAt).getTime(), authorName: e.actorName, title: describeJobEvent(e) }));
     // Pinned notes first, then reverse-chronological.
     return out.sort((a, b) => {
       if ((b.pinned ? 1 : 0) !== (a.pinned ? 1 : 0)) return (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0);
       return b.ts - a.ts;
     });
-  }, [notes, logs, jobs]);
+  }, [notes, logs, events]);
 
   const submit = async () => {
     if (!body.trim()) return;

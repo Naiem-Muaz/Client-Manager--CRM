@@ -70,6 +70,24 @@ export function useJobTemplates() {
   return { templates: (data || []) as JobTemplate[], isLoading, isError: error };
 }
 
+export interface JobEvent {
+  id: string;
+  jobId: string;
+  jobTitle: string;
+  eventType: 'created' | 'status_changed' | 'assigned' | 'comment_added' | 'time_logged' | 'completed' | 'checklist_step_toggled';
+  fromValue: string | null;
+  toValue: string | null;
+  metadata: any;
+  actorName: string;
+  createdAt: string;
+}
+
+export function useJobEvents(clientId: string | undefined) {
+  const key = clientId ? `/brain/jobs/events?clientId=${clientId}` : null;
+  const { data, error, isLoading, mutate } = useSWR<JobEvent[]>(key, fetcher);
+  return { events: (data || []) as JobEvent[], isLoading, isError: error, mutate };
+}
+
 export function useJobComments(jobId: string | null) {
   const key = jobId ? `/brain/jobs/${jobId}/comments` : null;
   const { data, error, isLoading, mutate } = useSWR(key, fetcher);

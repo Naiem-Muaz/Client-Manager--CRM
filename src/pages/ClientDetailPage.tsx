@@ -30,6 +30,7 @@ import { ComplianceSimulator } from '../components/dev/ComplianceSimulator';
 import { CompaniesHousePanel } from '../components/clients/CompaniesHousePanel';
 import { ClientComplianceDatesCard } from '../components/clients/ClientComplianceDatesCard';
 import { ClientHealthScoreCard } from '../components/clients/ClientHealthScoreCard';
+import { ClientWIPCard } from '../components/clients/ClientWIPCard';
 import { ActivityFeed } from '../components/clients/ActivityFeed';
 import { ClientAuthority, DEFAULT_AUTHORITY } from '../types/ClientAuthority';
 
@@ -212,12 +213,15 @@ export function ClientDetailPage() {
                </div>
           </div>
 
-          <ClientHealthScoreCard clientId={client.id} />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <ClientHealthScoreCard clientId={client.id} />
+            <ClientWIPCard clientId={client.id} />
+          </div>
           <ClientComplianceDatesCard client={client} />
         </div>
       )}
 
-      {activeTab === 'transactions' && <ClientTransactionsTab clientId={client.id} />}
+      {activeTab === 'transactions' && <ClientTransactionsTab clientId={client.id} clientName={client.legalName} />}
       {activeTab === 'snapshots' && <ClientSnapshotsTab clientId={client.id} />}
       {activeTab === 'accounting' && <ClientReviewTab clientId={client.id} />}
       {activeTab === 'tax' && <ClientTaxTab client={client} hasEngagement={hasEngagement} authority={authority} />}
