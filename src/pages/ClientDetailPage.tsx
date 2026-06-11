@@ -23,13 +23,14 @@ import { ClientEngagementTab } from '../components/clients/ClientEngagementTab';
 import { ClientCommunicationsTab } from '../components/clients/ClientCommunicationsTab';
 import { ClientTaxTab } from '../components/clients/ClientTaxTab';
 import { ClientReviewTab } from '../components/clients/ClientReviewTab';
-import { ClientAuditTab } from '../components/clients/ClientAuditTab';
 import { ClientTransactionsTab } from '../components/clients/ClientTransactionsTab';
 import { ClientSnapshotsTab } from '../components/clients/ClientSnapshotsTab';
 import { ClientHmrcTab } from '../components/clients/ClientHmrcTab';
 import { ComplianceSimulator } from '../components/dev/ComplianceSimulator';
 import { CompaniesHousePanel } from '../components/clients/CompaniesHousePanel';
 import { ClientComplianceDatesCard } from '../components/clients/ClientComplianceDatesCard';
+import { ClientHealthScoreCard } from '../components/clients/ClientHealthScoreCard';
+import { ActivityFeed } from '../components/clients/ActivityFeed';
 import { ClientAuthority, DEFAULT_AUTHORITY } from '../types/ClientAuthority';
 
 const MOCK_STARTING_AUTHORITY: ClientAuthority = {
@@ -42,7 +43,6 @@ const MOCK_STARTING_AUTHORITY: ClientAuthority = {
 
 import { useClientDetails as useClient } from '../hooks/useClients';
 import { useEntitiesForClient } from '../hooks/useEntities';
-import { useAuditLogs } from '../hooks/useAudit';
 
 export function ClientDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -59,9 +59,6 @@ export function ClientDetailPage() {
   // State for Compliance Simulation
   const [hasEngagement, setHasEngagement] = useState(true);
   const [authority, setAuthority] = useState<ClientAuthority>(MOCK_STARTING_AUTHORITY);
-
-  // Real audit trail for this client
-  const { logs: auditLogs } = useAuditLogs(id || undefined);
 
   if (clientError) return <div className="p-8 text-red-600">Error loading client.</div>;
   if (!client) return <div className="p-8 space-y-4 animate-pulse">
@@ -170,7 +167,7 @@ export function ClientDetailPage() {
       {/* Tabs */}
       <div className="border-b border-slate-200 mb-8 overflow-x-auto">
         <div className="flex gap-8 whitespace-nowrap">
-            {['overview', 'transactions', 'snapshots', 'accounting', 'tax', 'hmrc', 'documents', 'audit'].map(tab => (
+            {['overview', 'activity', 'transactions', 'snapshots', 'accounting', 'tax', 'hmrc', 'documents'].map(tab => (
                 <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
@@ -215,6 +212,7 @@ export function ClientDetailPage() {
                </div>
           </div>
 
+          <ClientHealthScoreCard clientId={client.id} />
           <ClientComplianceDatesCard client={client} />
         </div>
       )}
@@ -225,7 +223,7 @@ export function ClientDetailPage() {
       {activeTab === 'tax' && <ClientTaxTab client={client} hasEngagement={hasEngagement} authority={authority} />}
       {activeTab === 'hmrc' && <ClientHmrcTab clientId={client.id} />}
       {activeTab === 'documents' && <ClientDocumentsTab client={client} />}
-      {activeTab === 'audit' && <ClientAuditTab logs={auditLogs} />}
+      {activeTab === 'activity' && <ActivityFeed clientId={client.id} />}
       
       <ComplianceSimulator 
         hasEngagement={hasEngagement} 

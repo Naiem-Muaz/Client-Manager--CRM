@@ -1,19 +1,22 @@
-import React from 'react';
-import { Shield, Zap, AlertTriangle, Users, Lock, CheckCircle } from 'lucide-react';
-import { useTeamMembers } from '../../hooks/useTeam';
+import React, { useState } from 'react';
+import { Shield, Zap, AlertTriangle, Users, Lock, X, Loader2 } from 'lucide-react';
+import { useTeamMembers, inviteTeamMember, updateTeamMember, TeamMember, TEAM_ROLES } from '../../hooks/useTeam';
 import { useAutomationRules, toggleAutomationRule } from '../../hooks/useAutomationRules';
 
 const initials = (name: string) =>
-    (name || '?')
-        .split(' ')
-        .map(w => w[0])
-        .join('')
-        .slice(0, 2)
-        .toUpperCase();
+    (name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+
+const roleLabel = (r?: string | null) => (r || '—').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
 // --- Tab 1: Users & Roles ---
 export function UsersTab() {
-    const { members, isLoading } = useTeamMembers();
+    const { members, isLoading, mutate } = useTeamMembers();
+    const [showInvite, setShowInvite] = useState(false);
+    const [editing, setEditing] = useState<TeamMember | null>(null);
+
+    const InviteButton = ({ label }: { label: string }) => (
+        <button onClick={() => setShowInvite(true)} className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">{label}</button>
+    );
 
     return (
         <div className="space-y-6">
@@ -22,34 +25,25 @@ export function UsersTab() {
                     <h3 className="text-lg font-semibold text-slate-900">User Management</h3>
                     <p className="text-slate-500 text-sm">Manage staff access and permissions.</p>
                 </div>
-                <button className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">
-                    Invite User
-                </button>
+                <InviteButton label="Invite User" />
             </div>
 
             {isLoading ? (
-                <div className="space-y-3">
-                    {[1, 2, 3].map(i => <div key={i} className="h-14 bg-slate-100 rounded-xl animate-pulse" />)}
-                </div>
+                <div className="space-y-3">{[1, 2, 3].map(i => <div key={i} className="h-14 bg-slate-100 rounded-xl animate-pulse" />)}</div>
             ) : members.length === 0 ? (
                 <div className="bg-white border border-dashed border-slate-200 rounded-xl p-12 text-center">
-                    <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
-                        <Users size={28} />
-                    </div>
+                    <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400"><Users size={28} /></div>
                     <h4 className="text-base font-semibold text-slate-900">No team members added yet</h4>
                     <p className="text-slate-500 text-sm mt-1 mb-4">Invite colleagues to give them access to the practice.</p>
-                    <button className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">
-                        Invite your first team member
-                    </button>
+                    <InviteButton label="Invite your first team member" />
                 </div>
             ) : (
                 <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
                     <table className="w-full text-left text-sm">
                         <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-medium">
                             <tr>
-                                <th className="px-6 py-3">Name</th>
-                                <th className="px-6 py-3">Role</th>
-                                <th className="px-6 py-3">Status</th>
+                                <th className="px-6 py-3">Name</th><th className="px-6 py-3">Role</th>
+                                <th className="px-6 py-3">Open jobs</th><th className="px-6 py-3">Status</th>
                                 <th className="px-6 py-3 text-right">Actions</th>
                             </tr>
                         </thead>
@@ -58,23 +52,110 @@ export function UsersTab() {
                                 <tr key={m.id} className="group hover:bg-slate-50">
                                     <td className="px-6 py-4 font-medium text-slate-900 flex items-center gap-3">
                                         <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs">{initials(m.name)}</div>
-                                        {m.name}
+                                        <div>{m.name}<div className="text-xs text-slate-400 font-normal">{m.email}</div></div>
                                     </td>
-                                    <td className="px-6 py-4 text-slate-600">{m.role}</td>
+                                    <td className="px-6 py-4 text-slate-600">{roleLabel(m.role)}</td>
+                                    <td className="px-6 py-4 text-slate-600">{m.status === 'pending' ? '—' : (m.jobCount ?? 0)}</td>
                                     <td className="px-6 py-4">
-                                        {m.status === 'pending' ? (
-                                            <span className="px-2 py-1 bg-amber-100 text-amber-700 rounded-full text-xs font-medium">Pending</span>
-                                        ) : (
-                                            <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">Active</span>
-                                        )}
+                                        {m.status === 'pending'
+                                            ? <span className="px-2 py-1 bg-amber-100 text-amber-700 rounded-full text-xs font-medium">Pending</span>
+                                            : m.active
+                                                ? <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">Active</span>
+                                                : <span className="px-2 py-1 bg-slate-100 text-slate-500 rounded-full text-xs font-medium">Inactive</span>}
                                     </td>
-                                    <td className="px-6 py-4 text-right"><button className="text-blue-600 hover:text-blue-800 font-medium">Edit</button></td>
+                                    <td className="px-6 py-4 text-right">
+                                        {m.status === 'pending'
+                                            ? <span className="text-slate-300 text-xs">Invited</span>
+                                            : <button onClick={() => setEditing(m)} className="text-blue-600 hover:text-blue-800 font-medium">Edit</button>}
+                                    </td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
                 </div>
             )}
+
+            {showInvite && <InviteModal onClose={() => setShowInvite(false)} onDone={() => { setShowInvite(false); mutate(); }} />}
+            {editing && <EditMemberModal member={editing} onClose={() => setEditing(null)} onDone={() => { setEditing(null); mutate(); }} />}
+        </div>
+    );
+}
+
+function InviteModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+    const [email, setEmail] = useState('');
+    const [role, setRole] = useState('accountant');
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const submit = async () => {
+        if (!email.trim()) return;
+        setSaving(true); setError(null);
+        try { await inviteTeamMember({ email: email.trim(), role }); onDone(); }
+        catch (e: any) { setError(e?.error || e?.message || 'Failed to send invite'); setSaving(false); }
+    };
+    return (
+        <Modal title="Invite team member" onClose={onClose} onSubmit={submit} saving={saving} submitLabel="Send invite" error={error}>
+            <Labeled label="Email">
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="colleague@firm.co.uk" className={inputCls} />
+            </Labeled>
+            <Labeled label="Role">
+                <select value={role} onChange={e => setRole(e.target.value)} className={inputCls}>
+                    {TEAM_ROLES.map(r => <option key={r} value={r}>{roleLabel(r)}</option>)}
+                </select>
+            </Labeled>
+        </Modal>
+    );
+}
+
+function EditMemberModal({ member, onClose, onDone }: { member: TeamMember; onClose: () => void; onDone: () => void }) {
+    const [fullName, setFullName] = useState(member.name);
+    const [role, setRole] = useState(member.role || 'accountant');
+    const [active, setActive] = useState(member.active);
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const submit = async () => {
+        setSaving(true); setError(null);
+        try { await updateTeamMember(member.id, { fullName, role, active }); onDone(); }
+        catch (e: any) { setError(e?.error || e?.message || 'Failed to save'); setSaving(false); }
+    };
+    return (
+        <Modal title="Edit team member" onClose={onClose} onSubmit={submit} saving={saving} submitLabel="Save" error={error}>
+            <Labeled label="Full name"><input value={fullName} onChange={e => setFullName(e.target.value)} className={inputCls} /></Labeled>
+            <Labeled label="Role">
+                <select value={role} onChange={e => setRole(e.target.value)} className={inputCls}>
+                    {TEAM_ROLES.map(r => <option key={r} value={r}>{roleLabel(r)}</option>)}
+                </select>
+            </Labeled>
+            <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={active} onChange={e => setActive(e.target.checked)} className="w-4 h-4 text-blue-600 rounded" />
+                <span className="text-sm font-medium text-slate-700">Active</span>
+            </label>
+        </Modal>
+    );
+}
+
+const inputCls = 'w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-100';
+function Labeled({ label, children }: { label: string; children: React.ReactNode }) {
+    return <div className="space-y-1"><label className="text-xs font-bold text-slate-500 uppercase tracking-wide">{label}</label>{children}</div>;
+}
+function Modal({ title, onClose, onSubmit, saving, submitLabel, error, children }: any) {
+    return (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
+                <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+                    <h3 className="font-bold text-slate-900">{title}</h3>
+                    <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full text-slate-400"><X size={18} /></button>
+                </div>
+                <div className="p-6 space-y-4">
+                    {children}
+                    {error && <p className="text-sm text-red-600">{error}</p>}
+                </div>
+                <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex justify-end gap-3">
+                    <button onClick={onClose} className="px-4 py-2 text-slate-600 font-medium hover:bg-white rounded-lg text-sm">Cancel</button>
+                    <button onClick={onSubmit} disabled={saving} className="px-5 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm flex items-center gap-2">
+                        {saving ? <><Loader2 size={14} className="animate-spin" /> Saving…</> : submitLabel}
+                    </button>
+                </div>
+            </div>
         </div>
     );
 }

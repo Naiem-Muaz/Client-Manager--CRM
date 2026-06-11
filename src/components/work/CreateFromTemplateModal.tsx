@@ -1,8 +1,11 @@
-import React, { useState, useMemo } from 'react';
-import { X, Search, Loader2, ChevronLeft, FileText } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { X, Search, Loader2, ChevronLeft, FileText, Sparkles } from 'lucide-react';
 import { useJobTemplates, JobTemplate, createJob, Job, JobStatus } from '../../hooks/useJobs';
 import { useClients } from '../../hooks/useClients';
 import { useTeamMembers } from '../../hooks/useTeam';
+import { calculateDueDate, needsClientConfig, applyBankHolidayRoll } from '../../lib/templateDueDates';
+
+const isoDate = (d: Date) => d.toISOString().split('T')[0];
 
 function currentTaxYear(): string {
   const now = new Date();
@@ -39,6 +42,25 @@ export function CreateFromTemplateModal({ initialStatus, onClose, onCreated }: {
   const [taxYear, setTaxYear] = useState(currentTaxYear());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [calcLabel, setCalcLabel] = useState<string | null>(null);
+
+  // Pre-fill the due date from the template rule (+ client config where available).
+  useEffect(() => {
+    if (step !== 2 || !selected) return;
+    const cfg = {
+      accountingPeriodEnd: (client as any)?.accountingPeriodEnd ? new Date((client as any).accountingPeriodEnd) : undefined,
+      vatQuarterEnd: (client as any)?.vatQuarterEnd ? new Date((client as any).vatQuarterEnd) : undefined,
+    };
+    const d = calculateDueDate(selected, cfg);
+    if (d) {
+      setDueDate(isoDate(d));
+      setCalcLabel(needsClientConfig(selected) ? 'Calculated from client data' : 'Calculated from template rule');
+      applyBankHolidayRoll(d).then(adj => setDueDate(isoDate(adj))).catch(() => {});
+    } else {
+      setCalcLabel(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, selected, client]);
 
   const filteredTemplates = useMemo(() => {
     const t = search.trim().toLowerCase();
@@ -137,7 +159,8 @@ export function CreateFromTemplateModal({ initialStatus, onClose, onCreated }: {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-1">Due date</label>
-                <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className={field} />
+                <input type="date" value={dueDate} onChange={e => { setDueDate(e.target.value); setCalcLabel(null); }} className={field} />
+                {calcLabel && <p className="text-[11px] text-emerald-600 mt-1 flex items-center gap-1"><Sparkles size={11} /> {calcLabel}</p>}
               </div>
               <div>
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-1">Tax year</label>

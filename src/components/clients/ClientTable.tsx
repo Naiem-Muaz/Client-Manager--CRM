@@ -1,12 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { MoreHorizontal, Eye, Archive, User } from 'lucide-react';
+import { MoreHorizontal, Eye, Archive, User, ChevronUp, ChevronDown } from 'lucide-react';
 import { archiveClient } from '../../hooks/useClients';
+import { GRADE_META, HealthGrade } from '../../hooks/useHealth';
 
-export function ClientTable({ clients }: { clients: any[] }) {
+interface Props { clients: any[]; healthScores?: Record<string, { score: number; grade: HealthGrade }> }
+
+export function ClientTable({ clients, healthScores = {} }: Props) {
     const navigate = useNavigate();
     const [openMenuId, setOpenMenuId] = useState<string | null>(null);
     const [archivingId, setArchivingId] = useState<string | null>(null);
+    const [healthSort, setHealthSort] = useState<'asc' | 'desc' | null>(null);
+
+    const displayClients = useMemo(() => {
+        if (!healthSort) return clients;
+        return [...clients].sort((a, b) => {
+            const sa = healthScores[a.id]?.score ?? -1;
+            const sb = healthScores[b.id]?.score ?? -1;
+            return healthSort === 'asc' ? sa - sb : sb - sa;
+        });
+    }, [clients, healthScores, healthSort]);
 
     const handleArchive = async (client: any) => {
         setOpenMenuId(null);
@@ -46,11 +59,17 @@ export function ClientTable({ clients }: { clients: any[] }) {
                         <th className="px-6 py-4">HMRC</th>
                         <th className="px-6 py-4">CDD</th>
                         <th className="px-6 py-4 text-center">Risk</th>
+                        <th className="px-6 py-4 cursor-pointer select-none" onClick={() => setHealthSort(s => s === 'desc' ? 'asc' : 'desc')}>
+                            <span className="inline-flex items-center gap-1 hover:text-slate-800">
+                                Health
+                                {healthSort === 'asc' ? <ChevronUp size={12} /> : healthSort === 'desc' ? <ChevronDown size={12} /> : null}
+                            </span>
+                        </th>
                         <th className="px-6 py-4 text-right">Actions</th>
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-divider">
-                    {clients.map(client => {
+                    {displayClients.map(client => {
                         // Computed Risk Dot Logic
                         let riskColor = 'bg-slate-200'; // Default gray
                         if (client.riskScore > 80) riskColor = 'bg-red-500';
@@ -97,10 +116,18 @@ export function ClientTable({ clients }: { clients: any[] }) {
                                 )}
                             </td>
                              <td className="px-6 py-4 text-center pointer-events-none">
-                                <span 
-                                    className={`inline-block w-3 h-3 rounded-full ${riskColor} ring-2 ring-white shadow-sm`} 
-                                    title={`Risk Score: ${client.riskScore}`} 
+                                <span
+                                    className={`inline-block w-3 h-3 rounded-full ${riskColor} ring-2 ring-white shadow-sm`}
+                                    title={`Risk Score: ${client.riskScore}`}
                                 />
+                            </td>
+                            <td className="px-6 py-4 pointer-events-none">
+                                {healthScores[client.id] ? (
+                                    <span className="inline-flex items-center gap-2">
+                                        <span className={`w-2.5 h-2.5 rounded-full ${GRADE_META[healthScores[client.id].grade].dot}`} />
+                                        <span className="text-sm font-medium text-slate-700">{healthScores[client.id].score}</span>
+                                    </span>
+                                ) : <span className="text-slate-300 text-sm">—</span>}
                             </td>
                             <td className="px-6 py-4 text-right z-30 relative">
                                 <div className="relative inline-block">

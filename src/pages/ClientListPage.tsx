@@ -4,6 +4,7 @@ import { ClientFilters, ClientFilterState, DEFAULT_CLIENT_FILTERS } from '../com
 import { ClientTable } from '../components/clients/ClientTable';
 
 import { useClients } from '../hooks/useClients';
+import { useHealthScores } from '../hooks/useHealth';
 
 function riskBand(score: number): 'low' | 'medium' | 'high' {
     if (score > 80) return 'high';
@@ -13,6 +14,7 @@ function riskBand(score: number): 'low' | 'medium' | 'high' {
 
 export function ClientListPage() {
     const { clients: rawData, isError: error, isLoading } = useClients();
+    const { scores: healthScores } = useHealthScores();
     const [filters, setFilters] = useState<ClientFilterState>(DEFAULT_CLIENT_FILTERS);
 
     // The API might return { data: [...] } or just [...]
@@ -65,7 +67,7 @@ export function ClientListPage() {
                     </button>
                 </div>
             ) : (
-                <ClientTable clients={filteredClients} />
+                <ClientTable clients={filteredClients} healthScores={healthScores} />
             )}
         </div>
     );

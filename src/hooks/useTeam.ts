@@ -6,19 +6,28 @@ const fetcher = (url: string) => NextGenAPI.get(url).then(res => res.data.data |
 
 export interface TeamMember {
   id: string;
-  name: string;
+  name: string;          // normalised from backend `fullName`
   email: string;
-  role: string;
+  role: string | null;
   active: boolean;
   status?: 'active' | 'pending';
-  agentCode?: string;
+  agentCode?: string | null;
+  jobCount?: number;
+  avatarInitial?: string;
 }
+
+export const TEAM_ROLES = ['partner', 'manager', 'senior-accountant', 'accountant', 'trainee', 'admin'];
 
 export function useTeamMembers() {
   const { data, error, isLoading } = useSWR(TEAM_URL, fetcher);
+  const rows = (data?.items || data || []) as any[];
+  const members: TeamMember[] = (Array.isArray(rows) ? rows : []).map(r => ({
+    ...r,
+    name: r.fullName ?? r.name ?? r.email,
+  }));
 
   return {
-    members: (data?.items || data || []) as TeamMember[],
+    members,
     isLoading,
     isError: error,
     mutate: () => mutate(TEAM_URL),
@@ -31,7 +40,7 @@ export async function inviteTeamMember(payload: { email: string; role: string })
   return response.data.data || response.data;
 }
 
-export async function updateTeamMember(id: string, updates: Partial<TeamMember>) {
+export async function updateTeamMember(id: string, updates: Record<string, any>) {
   const response = await NextGenAPI.patch(`${TEAM_URL}/${id}`, updates);
   mutate(TEAM_URL);
   return response.data.data || response.data;
