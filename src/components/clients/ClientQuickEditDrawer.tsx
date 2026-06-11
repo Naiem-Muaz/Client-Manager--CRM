@@ -13,6 +13,7 @@ export function ClientQuickEditDrawer({ client, onClose, onSaved }: { client: an
   const [phone, setPhone] = useState(client.phone || '');
   const [entityType, setEntityType] = useState(client.entityType || 'Individual');
   const [assignedStaffId, setAssignedStaffId] = useState(client.assigned_staff_id || '');
+  const [assignedManagerId, setAssignedManagerId] = useState(client.assigned_manager_id || '');
   const [riskLevel, setRiskLevel] = useState(client.risk_level || 'low');
   const [mtdStatus, setMtdStatus] = useState(client.mtd_status || 'not-enrolled');
   const [incomeBand, setIncomeBand] = useState(client.income_band || '');
@@ -34,7 +35,7 @@ export function ClientQuickEditDrawer({ client, onClose, onSaved }: { client: an
     try {
       await patchClient(client.id, {
         name, legal_name: name, email: email || null, phone: phone || null,
-        entity_type: entityType, assigned_staff_id: assignedStaffId || null,
+        entity_type: entityType, assigned_staff_id: assignedStaffId || null, assigned_manager_id: assignedManagerId || null,
         risk_level: riskLevel, mtd_status: mtdStatus, income_band: incomeBand || null, tags,
       });
       onSaved();
@@ -68,12 +69,20 @@ export function ClientQuickEditDrawer({ client, onClose, onSaved }: { client: an
               </select>
             </Field>
           </div>
-          <Field label="Assigned staff">
-            <select value={assignedStaffId} onChange={e => setAssignedStaffId(e.target.value)} className={field}>
-              <option value="">Unassigned</option>
-              {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-            </select>
-          </Field>
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Assigned partner">
+              <select value={assignedStaffId} onChange={e => setAssignedStaffId(e.target.value)} className={field}>
+                <option value="">Unassigned</option>
+                {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            </Field>
+            <Field label="Assigned manager">
+              <select value={assignedManagerId} onChange={e => setAssignedManagerId(e.target.value)} className={field}>
+                <option value="">Unassigned</option>
+                {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            </Field>
+          </div>
           <div className="grid grid-cols-2 gap-4">
             <Field label="MTD status">
               <select value={mtdStatus} onChange={e => setMtdStatus(e.target.value)} className={field}>

@@ -241,6 +241,7 @@ export function CreateClientWizard() {
         risk_level: 'low',
         tags: d.tags, notes: d.notes || null,
         assigned_staff_id: d.assignedPartnerId || null,
+        assigned_manager_id: d.assignedManagerId || null,
       };
       if (isCompanyLike(et)) {
         fields.company_number = (d.companyNumber || '').replace(/\s/g, '') || null;
