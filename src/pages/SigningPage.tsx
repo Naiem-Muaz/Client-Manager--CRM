@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import { CheckCircle, AlertTriangle, Loader2, Download, FileSignature } from 'lucide-react';
 
 // The /sign API is mounted at the backend root (NOT under /api).
-const API_ROOT = ((import.meta as any).env?.VITE_NEXTGEN_API_URL || 'http://localhost:4000/api').replace(/\/api\/?$/, '');
+const API_ROOT = ((import.meta as any).env?.VITE_NEXTGEN_API_URL || 'https://lumina-tax-monorepo-production.up.railway.app/api').replace(/\/api\/?$/, '');
 
 type State =
   | { phase: 'loading' }

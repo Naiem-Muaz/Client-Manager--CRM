@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const NEXTGEN_URL = import.meta.env.VITE_NEXTGEN_API_URL || 'http://localhost:4000/api';
+// Hardcoded prod fallback prevents a blank API base if VITE_NEXTGEN_API_URL is missing on Vercel.
+const NEXTGEN_URL = import.meta.env.VITE_NEXTGEN_API_URL || 'https://lumina-tax-monorepo-production.up.railway.app/api';
 
 export const NextGenAPI = axios.create({
   baseURL: NEXTGEN_URL,

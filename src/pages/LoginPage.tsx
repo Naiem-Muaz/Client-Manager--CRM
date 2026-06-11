@@ -4,6 +4,10 @@ import { useAuth } from '../context/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Building2 } from 'lucide-react';
 
+// TODO: Migrate to Supabase auth to enable shared sessions
+// with app.taxxdigital.co.uk (same Supabase project).
+// Currently uses custom JWT — users must log in separately.
+
 export function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
