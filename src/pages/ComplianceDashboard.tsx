@@ -1,7 +1,24 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useComplianceSummary, useComplianceClients, ClientComplianceRow, ComplianceSummary } from '../hooks/useCompliance';
-import { ShieldAlert, AlertCircle, CheckCircle, Clock } from 'lucide-react';
+import { ShieldAlert, AlertCircle, CheckCircle, Clock, Download } from 'lucide-react';
+
+function exportComplianceCsv(rows: ClientComplianceRow[]) {
+  const headers = ['Client', 'CDD', 'HMRC Connected', 'Authorised', 'Obligation', 'Deadline', 'Days Remaining', 'Submission', 'Risk'];
+  const escape = (v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const lines = rows.map(r => [
+    r.name, r.cdd_status, r.hmrc_connected, r.authorised, r.obligation_status,
+    r.deadline_status, r.days_remaining, r.submission_status, r.risk_level,
+  ].map(escape).join(','));
+  const csv = [headers.join(','), ...lines].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `compliance-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 export function ComplianceDashboard() {
   const { summary, isLoading: isSummaryLoading, isError: summaryError } = useComplianceSummary();
@@ -82,6 +99,13 @@ export function ComplianceDashboard() {
           <h1 className="text-2xl font-bold text-slate-900">Firm Compliance</h1>
           <p className="text-slate-500 mt-1">Real-time risk detection and MTD ITSA obligations</p>
         </div>
+        <button
+          onClick={() => exportComplianceCsv(filteredClients)}
+          disabled={filteredClients.length === 0}
+          className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-50 transition-colors font-medium text-sm shadow-sm disabled:opacity-50 disabled:cursor-not-allowed self-start"
+        >
+          <Download size={16} /> Export CSV
+        </button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

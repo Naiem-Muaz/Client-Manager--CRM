@@ -3,8 +3,9 @@ import { Calendar, ChevronLeft, ChevronRight, AlertTriangle, CheckCircle, Clock 
 
 export function DeadlinesPage() {
     const [view, setView] = useState<'timeline' | 'list'>('timeline');
+    const [monthOffset, setMonthOffset] = useState(0);
 
-    // Mock Date Data - Linked to Periods
+    // NOTE: deadline data is still placeholder pending the /brain/deadlines engine.
     const deadlines = [
         { id: 1, client: 'Acme Corp', type: 'VAT Return', date: '2024-02-07', status: 'Upcoming', risk: 'safe' }, // Green
         { id: 2, client: 'Smith Ltd', type: 'PAYE', date: '2024-02-19', status: 'Due Soon', risk: 'approaching' }, // Orange
@@ -13,7 +14,16 @@ export function DeadlinesPage() {
         { id: 5, client: 'Global Trading', type: 'Accounts', date: '2024-03-31', status: 'On Track', risk: 'safe' },
     ];
 
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
+    // Rolling 6-month window, navigable via the chevrons.
+    const windowStart = new Date();
+    windowStart.setDate(1);
+    windowStart.setMonth(windowStart.getMonth() + monthOffset);
+    const windowMonths = Array.from({ length: 6 }, (_, i) => {
+        const d = new Date(windowStart);
+        d.setMonth(windowStart.getMonth() + i);
+        return d;
+    });
+    const rangeLabel = `${windowMonths[0].toLocaleString('default', { month: 'short', year: 'numeric' })} – ${windowMonths[5].toLocaleString('default', { month: 'short', year: 'numeric' })}`;
 
     return (
         <div className="space-y-6">
@@ -41,10 +51,36 @@ export function DeadlinesPage() {
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 overflow-hidden">
                  {/* Timeline Header controls */}
                  <div className="flex items-center justify-between mb-8">
-                    <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                        <Calendar size={20} className="text-blue-500" />
-                        2024 Overview
-                    </h2>
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                            <Calendar size={20} className="text-blue-500" />
+                            {rangeLabel}
+                        </h2>
+                        <div className="flex items-center gap-1">
+                            <button
+                                onClick={() => setMonthOffset(o => o - 1)}
+                                aria-label="Previous month"
+                                className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-800 transition-colors"
+                            >
+                                <ChevronLeft size={16} />
+                            </button>
+                            <button
+                                onClick={() => setMonthOffset(o => o + 1)}
+                                aria-label="Next month"
+                                className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-800 transition-colors"
+                            >
+                                <ChevronRight size={16} />
+                            </button>
+                            {monthOffset !== 0 && (
+                                <button
+                                    onClick={() => setMonthOffset(0)}
+                                    className="ml-1 text-xs font-medium text-blue-600 hover:text-blue-800"
+                                >
+                                    Today
+                                </button>
+                            )}
+                        </div>
+                    </div>
                     <div className="flex items-center gap-4 text-sm font-medium">
                         <div className="flex items-center gap-2">
                              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Safe
@@ -64,15 +100,19 @@ export function DeadlinesPage() {
                      <div className="absolute top-8 left-0 w-[1000px] h-1 bg-slate-100 rounded-full"></div>
 
                      <div className="flex min-w-[1000px] justify-between relative z-10">
-                        {months.map((month, index) => {
-                             // Filter deadlines for this month (Mock logic using string matching)
-                             const monthDeadlines = deadlines.filter(d => new Date(d.date).toLocaleString('default', { month: 'short' }) === month);
+                        {windowMonths.map((monthDate) => {
+                             const monthLabel = monthDate.toLocaleString('default', { month: 'short' });
+                             // Match deadlines falling in this month + year
+                             const monthDeadlines = deadlines.filter(d => {
+                                 const dd = new Date(d.date);
+                                 return dd.getMonth() === monthDate.getMonth() && dd.getFullYear() === monthDate.getFullYear();
+                             });
 
                              return (
-                                 <div key={month} className="flex flex-col items-center w-40 relative group">
+                                 <div key={`${monthLabel}-${monthDate.getFullYear()}`} className="flex flex-col items-center w-40 relative group">
                                      {/* Month Node */}
                                      <div className="w-4 h-4 rounded-full bg-slate-300 border-4 border-white shadow-sm mb-4 group-hover:scale-125 group-hover:bg-blue-500 transition-all"></div>
-                                     <span className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6 group-hover:text-blue-600 transition-colors">{month}</span>
+                                     <span className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6 group-hover:text-blue-600 transition-colors">{monthLabel}</span>
                                      
                                      {/* Deadlines Stack */}
                                      <div className="flex flex-col gap-2 w-full px-2">
@@ -99,7 +139,7 @@ export function DeadlinesPage() {
                                                              d.risk === 'approaching' ? 'text-amber-700' :
                                                              'text-red-700'
                                                          }`}>
-                                                             {new Date(d.date).getDate()} {month}
+                                                             {new Date(d.date).getDate()} {monthLabel}
                                                          </span>
                                                          {d.risk === 'late' && <AlertTriangle size={12} className="text-red-500" />}
                                                      </div>

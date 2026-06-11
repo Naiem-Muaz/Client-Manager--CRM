@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import useSWR from 'swr';
-import { 
-  Building2, 
-  User, 
-  ArrowLeft, 
-  MoreHorizontal
+import {
+  Building2,
+  User,
+  ArrowLeft,
+  MoreHorizontal,
+  RefreshCw,
+  History,
+  Copy
 } from 'lucide-react';
 
 import { ClientProfileSection } from '../components/clients/ClientProfileSection';
@@ -13,7 +16,6 @@ import { ClientEntitiesColumn, ClientActiveWorkColumn, ClientAlertsColumn } from
 // import { EntitiesSummarySection } from '../components/clients/EntitiesSummarySection';
 import { ActivePeriodsSection } from '../components/clients/ActivePeriodsSection';
 import { OutstandingWorkSection, ComplianceHistorySection } from '../components/clients/WorkAndHistorySections';
-import { ComplianceTimelineWidget } from '../components/clients/ComplianceTimelineWidget';
 import { ClientDetailTopBar } from '../components/clients/ClientDetailTopBar';
 import { ClientSettingsTab } from '../components/clients/ClientSettingsTab';
 import { ClientDocumentsTab } from '../components/clients/ClientDocumentsTab';
@@ -26,7 +28,7 @@ import { ClientTransactionsTab } from '../components/clients/ClientTransactionsT
 import { ClientSnapshotsTab } from '../components/clients/ClientSnapshotsTab';
 import { ClientHmrcTab } from '../components/clients/ClientHmrcTab';
 import { ComplianceSimulator } from '../components/dev/ComplianceSimulator';
-import { AuditLogEntry } from '../types/AuditTypes';
+import { CompaniesHousePanel } from '../components/clients/CompaniesHousePanel';
 import { ClientAuthority, DEFAULT_AUTHORITY } from '../types/ClientAuthority';
 
 const MOCK_STARTING_AUTHORITY: ClientAuthority = {
@@ -38,28 +40,27 @@ const MOCK_STARTING_AUTHORITY: ClientAuthority = {
 };
 
 import { useClientDetails as useClient } from '../hooks/useClients';
-const useEntitiesForClient = (id: string | null) => ({ entities: [] });
+import { useEntitiesForClient } from '../hooks/useEntities';
+import { useAuditLogs } from '../hooks/useAudit';
 
 export function ClientDetailPage() {
   const { id } = useParams<{ id: string }>();
   // Parallel fetch: Client Details + Entities
-  const { client: rawClientData, isError: clientError } = useClient(id || undefined);
+  const { client: rawClientData, isError: clientError, mutate: mutateClient } = useClient(id || undefined);
   const { entities: rawEntitiesData } = useEntitiesForClient(id || null);
 
   const client = (rawClientData as any)?.data || rawClientData;
   const entities = (rawEntitiesData as any)?.data || rawEntitiesData || [];
 
   const [activeTab, setActiveTab] = useState('overview');
+  const [menuOpen, setMenuOpen] = useState(false);
 
   // State for Compliance Simulation
   const [hasEngagement, setHasEngagement] = useState(true);
   const [authority, setAuthority] = useState<ClientAuthority>(MOCK_STARTING_AUTHORITY);
 
-  // Mock Audit Log State for Demo
-  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([
-    { id: '1', timestamp: new Date(Date.now() - 10000000).toISOString(), type: 'CLIENT_CREATED', description: 'Client record created', actor: 'System' },
-    { id: '2', timestamp: new Date(Date.now() - 5000000).toISOString(), type: 'ENGAGEMENT_SENT', description: 'Engagement Letter sent for signature', actor: 'John Doe' },
-  ] as any);
+  // Real audit trail for this client
+  const { logs: auditLogs } = useAuditLogs(id || undefined);
 
   if (clientError) return <div className="p-8 text-red-600">Error loading client.</div>;
   if (!client) return <div className="p-8 space-y-4 animate-pulse">
@@ -113,11 +114,57 @@ export function ClientDetailPage() {
                 </div>
             </div>
             
-            <button className="p-2 hover:bg-slate-100 rounded-lg text-slate-500 transition-colors">
-                <MoreHorizontal size={20} />
-            </button>
+            <div className="relative">
+                <button
+                    onClick={() => setMenuOpen(o => !o)}
+                    className="p-2 hover:bg-slate-100 rounded-lg text-slate-500 transition-colors"
+                    aria-label="Client actions"
+                >
+                    <MoreHorizontal size={20} />
+                </button>
+                {menuOpen && (
+                    <>
+                        <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+                        <div className="absolute right-0 mt-1 w-52 bg-white border border-slate-200 rounded-lg shadow-lg z-20 py-1">
+                            <button
+                                onClick={() => { setActiveTab('audit'); setMenuOpen(false); }}
+                                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                            >
+                                <History size={15} className="text-slate-400" /> View audit trail
+                            </button>
+                            <button
+                                onClick={() => { mutateClient(`/brain/clients/${id}`); setMenuOpen(false); }}
+                                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                            >
+                                <RefreshCw size={15} className="text-slate-400" /> Refresh data
+                            </button>
+                            <button
+                                onClick={() => { navigator.clipboard?.writeText(client.id); setMenuOpen(false); }}
+                                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                            >
+                                <Copy size={15} className="text-slate-400" /> Copy client ID
+                            </button>
+                        </div>
+                    </>
+                )}
+            </div>
         </div>
       </div>
+
+      {/* Companies House panel (Company-type clients only) */}
+      {client.entityType === 'Company' && (
+        <div className="mb-6">
+          <CompaniesHousePanel
+            client={{
+              id: client.id,
+              legalName: client.legalName,
+              companyNumber: client.companyNumber,
+              entityType: client.entityType,
+              chData: client.chData ?? null,
+            }}
+          />
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="border-b border-slate-200 mb-8 overflow-x-auto">
@@ -147,22 +194,18 @@ export function ClientDetailPage() {
 
               {/* Column 2: Active Work */}
               <div className="h-full border-l border-slate-200 pl-8 border-dashed lg:block hidden">
-                   <ClientActiveWorkColumn />
+                   <ClientActiveWorkColumn clientId={client.id} />
               </div>
 
-              {/* Column 3: Alerts & Timeline */}
+              {/* Column 3: Alerts */}
               <div className="h-full border-l border-slate-200 pl-8 border-dashed lg:block hidden space-y-8">
-                   <ComplianceTimelineWidget />
                    <ClientAlertsColumn />
               </div>
-              
+
                {/* Mobile Fallback (Stacking) */}
                <div className="lg:hidden space-y-8">
                     <div className="pt-8 border-t border-slate-200">
-                       <ClientActiveWorkColumn />
-                    </div>
-                    <div className="pt-8 border-t border-slate-200">
-                       <ComplianceTimelineWidget />
+                       <ClientActiveWorkColumn clientId={client.id} />
                     </div>
                     <div className="pt-8 border-t border-slate-200">
                        <ClientAlertsColumn />

@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { X, Send, Lock, Mail, Paperclip, ChevronDown } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, Send, Lock, Mail, Paperclip, ChevronDown, AlertCircle, Loader2 } from 'lucide-react';
 import { Communication, MessageType, EMAIL_TEMPLATES } from '../../types/CommunicationTypes';
 
 interface Props {
     onClose: () => void;
-    onSend: (msg: Communication) => void;
+    onSend: (msg: Communication) => void | Promise<void>;
     clientName: string;
 }
 
@@ -13,17 +13,19 @@ export function ComposeMessageModal({ onClose, onSend, clientName }: Props) {
     const [body, setBody] = useState('');
     const [type, setType] = useState<MessageType>('Email');
     const [selectedTemplateId, setSelectedTemplateId] = useState('');
+    const [sending, setSending] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
     const applyTemplate = (templateId: string) => {
         const template = EMAIL_TEMPLATES.find(t => t.id === templateId);
         if (template) {
             setSubject(template.subjectTemplate.replace('{{clientName}}', clientName));
-            setBody(template.bodyTemplate.replace('{{clientName}}', clientName).replace('{{agentName}}', 'Accountant Name')); // Mock agent name
+            setBody(template.bodyTemplate.replace('{{clientName}}', clientName).replace('{{agentName}}', 'Accountant Name'));
             setSelectedTemplateId(templateId);
         }
     };
 
-    const handleSend = () => {
+    const handleSend = async () => {
         const newMessage: Communication = {
             id: Date.now().toString(),
             subject,
@@ -35,7 +37,14 @@ export function ComposeMessageModal({ onClose, onSend, clientName }: Props) {
             recipient: clientName,
             sender: 'Me'
         };
-        onSend(newMessage);
+        setSending(true);
+        setError(null);
+        try {
+            await onSend(newMessage);
+        } catch (err: any) {
+            setError(err?.error || err?.message || 'Failed to send message. Please try again.');
+            setSending(false);
+        }
     };
 
     return (
@@ -117,18 +126,28 @@ export function ComposeMessageModal({ onClose, onSend, clientName }: Props) {
                 </div>
 
                 {/* Footer */}
-                <div className="p-4 border-t border-slate-200 flex justify-end gap-3 bg-slate-50">
-                    <button onClick={onClose} className="px-4 py-2 text-slate-600 font-medium hover:bg-white rounded-lg transition-colors">Discard</button>
-                    <button 
-                        onClick={handleSend}
-                        disabled={!subject || !body}
-                        className={`px-6 py-2 text-white font-bold rounded-lg shadow-sm flex items-center gap-2 transition-all ${
-                             !subject || !body ? 'bg-slate-300 cursor-not-allowed' : 
-                             type === 'SecureMessage' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700'
-                        }`}
-                    >
-                        <Send size={16} /> Send {type === 'SecureMessage' ? 'Securely' : 'Email'}
-                    </button>
+                <div className="border-t border-slate-200 bg-slate-50">
+                    {error && (
+                        <div className="px-4 pt-3 flex items-start gap-2 text-sm text-red-700">
+                            <AlertCircle size={16} className="shrink-0 mt-0.5" />
+                            <span>{error}</span>
+                        </div>
+                    )}
+                    <div className="p-4 flex justify-end gap-3">
+                        <button onClick={onClose} disabled={sending} className="px-4 py-2 text-slate-600 font-medium hover:bg-white rounded-lg transition-colors disabled:opacity-50">Discard</button>
+                        <button
+                            onClick={handleSend}
+                            disabled={!subject || !body || sending}
+                            className={`px-6 py-2 text-white font-bold rounded-lg shadow-sm flex items-center gap-2 transition-all ${
+                                 !subject || !body || sending ? 'bg-slate-300 cursor-not-allowed' :
+                                 type === 'SecureMessage' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700'
+                            }`}
+                        >
+                            {sending
+                                ? <><Loader2 size={16} className="animate-spin" /> Sending…</>
+                                : <><Send size={16} /> Send {type === 'SecureMessage' ? 'Securely' : 'Email'}</>}
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

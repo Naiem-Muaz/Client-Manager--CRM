@@ -5,7 +5,7 @@ import { NextGenAPI } from '../api/NextGenAPI';
  * Expected to return the HMRC authorization URL for the user to click.
  */
 export async function generateHmrcAuthLink(clientId: string, services: string[]) {
-  const response = await NextGenAPI.post(`/api/brain/clients/${clientId}/hmrc/auth-link`, { services });
+  const response = await NextGenAPI.post(`/brain/clients/${clientId}/hmrc/auth-link`, { services });
   return response.data; // e.g., { link: 'https://www.tax.service.gov.uk/...' }
 }
 
@@ -14,6 +14,6 @@ export async function generateHmrcAuthLink(clientId: string, services: string[])
  * Returns Authorized or Requested or Pending.
  */
 export async function checkHmrcAuthStatus(clientId: string) {
-  const response = await NextGenAPI.get(`/api/brain/clients/${clientId}/hmrc/status`);
+  const response = await NextGenAPI.get(`/brain/clients/${clientId}/hmrc/status`);
   return response.data;
 }

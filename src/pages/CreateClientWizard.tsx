@@ -1,7 +1,44 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, ChevronRight, User, Building2, Users, ArrowLeft, Info, HelpCircle } from 'lucide-react';
+import { Check, ChevronRight, User, Building2, Users, ArrowLeft, Info, HelpCircle, AlertCircle } from 'lucide-react';
 import { createClient } from '../hooks/useClients';
+
+// --- Validation ---
+
+export type WizardErrors = Record<string, string>;
+
+function validateClient(d: any): WizardErrors {
+    const e: WizardErrors = {};
+    if (d.type === 'Individual') {
+        if (!d.firstName?.trim()) e.firstName = 'First name is required';
+        if (!d.lastName?.trim()) e.lastName = 'Last name is required';
+    } else {
+        if (!d.companyName?.trim()) e.companyName = 'Company name is required';
+        if (!d.crn?.trim()) e.crn = 'Company number is required';
+    }
+    if (!d.email?.trim()) e.email = 'Email is required';
+    else if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(d.email)) e.email = 'Enter a valid email address';
+    if (!d.utr?.trim()) e.utr = 'UTR is required';
+    else if (!/^\d{10}$/.test(d.utr.replace(/\s/g, ''))) e.utr = 'UTR must be 10 digits';
+    return e;
+}
+
+const STEP_FIELDS = (type: string): Record<number, string[]> => ({
+    2: type === 'Individual' ? ['firstName', 'lastName', 'email'] : ['companyName', 'crn', 'email'],
+    4: ['utr'],
+});
+
+export function FieldError({ name, errors, touched }: { name: string; errors: WizardErrors; touched: Record<string, boolean> }) {
+    if (!touched[name] || !errors[name]) return null;
+    return (
+        <p className="flex items-center gap-1 text-xs text-red-600 mt-1">
+            <AlertCircle size={12} /> {errors[name]}
+        </p>
+    );
+}
+
+export const errorRing = (name: string, errors: WizardErrors, touched: Record<string, boolean>) =>
+    touched[name] && errors[name] ? 'border-red-300 focus:ring-red-500/20 focus:border-red-500' : '';
 
 export function CreateClientWizard() {
     const navigate = useNavigate();
@@ -22,16 +59,40 @@ export function CreateClientWizard() {
         entities: []
     });
 
+    const [touched, setTouched] = useState<Record<string, boolean>>({});
+    const errors = validateClient(formData);
+
     const updateData = (key: string, value: any) => {
         setFormData(prev => ({ ...prev, [key]: value }));
     };
 
-    const handleNext = () => setStep(step + 1);
+    const markTouched = (field: string) => setTouched(prev => ({ ...prev, [field]: true }));
+
+    const touchFields = (fields: string[]) =>
+        setTouched(prev => ({ ...prev, ...Object.fromEntries(fields.map(f => [f, true])) }));
+
+    const handleNext = () => {
+        const fields = STEP_FIELDS(formData.type)[step] || [];
+        const stepHasErrors = fields.some(f => errors[f]);
+        if (stepHasErrors) {
+            touchFields(fields);
+            return;
+        }
+        setStep(step + 1);
+    };
     const handleBack = () => setStep(step - 1);
 
     const handleSubmit = async () => {
+        // Mark every validated field touched so any outstanding errors surface.
+        const allFields = Object.values(STEP_FIELDS(formData.type)).flat();
+        if (Object.keys(errors).length > 0) {
+            touchFields(allFields);
+            // Jump back to the earliest step with an error.
+            const firstBadStep = [2, 4].find(s => (STEP_FIELDS(formData.type)[s] || []).some(f => errors[f]));
+            if (firstBadStep) setStep(firstBadStep);
+            return;
+        }
         try {
-            console.log("Submitting Client:", formData);
             await createClient(formData);
             navigate('/clients');
         } catch (err: any) {
@@ -92,9 +153,9 @@ export function CreateClientWizard() {
                 <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden min-h-[500px] flex flex-col">
                     <div className="p-8 flex-1">
                         {step === 1 && <ClientTypeStep data={formData} update={updateData} />}
-                        {step === 2 && <IdentityStep data={formData} update={updateData} />}
+                        {step === 2 && <IdentityStep data={formData} update={updateData} errors={errors} touched={touched} markTouched={markTouched} />}
                         {step === 3 && <EntitiesStep data={formData} update={updateData} />}
-                        {step === 4 && <HMRCRefsStep data={formData} update={updateData} />}
+                        {step === 4 && <HMRCRefsStep data={formData} update={updateData} errors={errors} touched={touched} markTouched={markTouched} />}
                         {step === 5 && <ReviewStep data={formData} />}
                     </div>
 
@@ -185,7 +246,7 @@ function ClientTypeStep({ data, update }: any) {
     );
 }
 
-function IdentityStep({ data, update }: any) {
+function IdentityStep({ data, update, errors, touched, markTouched }: any) {
     const [searchQuery, setSearchQuery] = React.useState('');
     const [searchResults, setSearchResults] = React.useState<any[]>([]);
     const [isSearching, setIsSearching] = React.useState(false);
@@ -289,21 +350,25 @@ function IdentityStep({ data, update }: any) {
                     <>
                         <div className="space-y-2">
                              <label className="text-sm font-semibold text-slate-700">First Name</label>
-                             <input 
-                                value={data.firstName} 
-                                onChange={e => update('firstName', e.target.value)} 
-                                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
+                             <input
+                                value={data.firstName}
+                                onChange={e => update('firstName', e.target.value)}
+                                onBlur={() => markTouched('firstName')}
+                                className={`w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium ${errorRing('firstName', errors, touched)}`}
                                 placeholder="e.g. John"
                              />
+                             <FieldError name="firstName" errors={errors} touched={touched} />
                         </div>
                         <div className="space-y-2">
                              <label className="text-sm font-semibold text-slate-700">Last Name</label>
-                             <input 
-                                value={data.lastName} 
-                                onChange={e => update('lastName', e.target.value)} 
-                                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium" 
+                             <input
+                                value={data.lastName}
+                                onChange={e => update('lastName', e.target.value)}
+                                onBlur={() => markTouched('lastName')}
+                                className={`w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium ${errorRing('lastName', errors, touched)}`}
                                 placeholder="e.g. Doe"
                              />
+                             <FieldError name="lastName" errors={errors} touched={touched} />
                         </div>
                          <div className="space-y-2">
                              <label className="text-sm font-semibold text-slate-700">Date of Birth</label>
@@ -411,21 +476,25 @@ function IdentityStep({ data, update }: any) {
                             <>
                                 <div className="col-span-2 space-y-2">
                                     <label className="text-sm font-semibold text-slate-700">Company Name</label>
-                                    <input 
-                                        value={data.companyName} 
-                                        onChange={e => update('companyName', e.target.value)} 
-                                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium" 
+                                    <input
+                                        value={data.companyName}
+                                        onChange={e => update('companyName', e.target.value)}
+                                        onBlur={() => markTouched('companyName')}
+                                        className={`w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium ${errorRing('companyName', errors, touched)}`}
                                         placeholder="e.g. Acme Innovations Ltd"
                                     />
+                                    <FieldError name="companyName" errors={errors} touched={touched} />
                                 </div>
                                 <div className="space-y-2">
                                     <label className="text-sm font-semibold text-slate-700">Company Number (CRN)</label>
-                                    <input 
-                                        value={data.crn} 
-                                        onChange={e => update('crn', e.target.value)} 
-                                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-mono" 
+                                    <input
+                                        value={data.crn}
+                                        onChange={e => update('crn', e.target.value)}
+                                        onBlur={() => markTouched('crn')}
+                                        className={`w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-mono ${errorRing('crn', errors, touched)}`}
                                         placeholder="e.g. 01234567"
                                     />
+                                    <FieldError name="crn" errors={errors} touched={touched} />
                                 </div>
                                 <div className="space-y-2">
                                     <label className="text-sm font-semibold text-slate-700">Incorporation Date</label>
@@ -501,13 +570,15 @@ function IdentityStep({ data, update }: any) {
                         </div>
                          <div className="space-y-2">
                              <label className="text-sm font-semibold text-slate-700">Email Address</label>
-                             <input 
-                                type="email" 
-                                value={data.email} 
-                                onChange={e => update('email', e.target.value)} 
-                                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium" 
-                                placeholder="john@example.com" 
+                             <input
+                                type="email"
+                                value={data.email}
+                                onChange={e => update('email', e.target.value)}
+                                onBlur={() => markTouched('email')}
+                                className={`w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium ${errorRing('email', errors, touched)}`}
+                                placeholder="john@example.com"
                              />
+                             <FieldError name="email" errors={errors} touched={touched} />
                         </div>
                      </div>
                 </div>
@@ -582,7 +653,7 @@ function EntitiesStep({ data, update }: any) {
     );
 }
 
-function HMRCRefsStep({ data, update }: any) {
+function HMRCRefsStep({ data, update, errors, touched, markTouched }: any) {
     return (
         <div className="space-y-6 animate-fadeIn">
             <div>
@@ -596,12 +667,14 @@ function HMRCRefsStep({ data, update }: any) {
                          Unique Taxpayer Reference (UTR)
                          <span className="text-xs font-normal text-slate-400">10 digits</span>
                      </label>
-                     <input 
-                        value={data.utr} 
-                        onChange={e => update('utr', e.target.value)} 
-                        className="w-full px-4 py-2.5 border border-slate-200 rounded-lg font-mono placeholder:text-slate-300 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all" 
-                        placeholder="12345 67890" 
+                     <input
+                        value={data.utr}
+                        onChange={e => update('utr', e.target.value)}
+                        onBlur={() => markTouched('utr')}
+                        className={`w-full px-4 py-2.5 border border-slate-200 rounded-lg font-mono placeholder:text-slate-300 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all ${errorRing('utr', errors, touched)}`}
+                        placeholder="12345 67890"
                     />
+                    <FieldError name="utr" errors={errors} touched={touched} />
                 </div>
                 {data.type === 'Company' && (
                      <div className="space-y-2">

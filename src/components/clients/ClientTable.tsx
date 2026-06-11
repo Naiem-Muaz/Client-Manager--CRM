@@ -9,8 +9,11 @@ export function ClientTable({ clients }: { clients: any[] }) {
                 <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
                     <User size={32} />
                 </div>
-                <h3 className="text-lg font-medium text-slate-900">No clients found</h3>
-                <p className="text-slate-500 mt-1">Get started by creating your first client.</p>
+                <h3 className="text-lg font-medium text-slate-900">No clients yet</h3>
+                <p className="text-slate-500 mt-1 mb-4">Get started by creating your first client.</p>
+                <Link to="/clients/new" className="inline-block px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors">
+                    Add your first client
+                </Link>
             </div>
         );
     }

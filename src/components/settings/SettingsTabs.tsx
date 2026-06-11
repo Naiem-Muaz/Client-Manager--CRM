@@ -1,8 +1,20 @@
 import React from 'react';
-import { User, Key, Shield, Zap, AlertTriangle, Users, Lock, CheckCircle } from 'lucide-react';
+import { Shield, Zap, AlertTriangle, Users, Lock, CheckCircle } from 'lucide-react';
+import { useTeamMembers } from '../../hooks/useTeam';
+import { useAutomationRules, toggleAutomationRule } from '../../hooks/useAutomationRules';
+
+const initials = (name: string) =>
+    (name || '?')
+        .split(' ')
+        .map(w => w[0])
+        .join('')
+        .slice(0, 2)
+        .toUpperCase();
 
 // --- Tab 1: Users & Roles ---
 export function UsersTab() {
+    const { members, isLoading } = useTeamMembers();
+
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
@@ -11,42 +23,58 @@ export function UsersTab() {
                     <p className="text-slate-500 text-sm">Manage staff access and permissions.</p>
                 </div>
                 <button className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">
-                    Add User
+                    Invite User
                 </button>
             </div>
 
-            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-                <table className="w-full text-left text-sm">
-                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-medium">
-                        <tr>
-                            <th className="px-6 py-3">Name</th>
-                            <th className="px-6 py-3">Role</th>
-                            <th className="px-6 py-3">Status</th>
-                            <th className="px-6 py-3 text-right">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                        <tr className="group hover:bg-slate-50">
-                            <td className="px-6 py-4 font-medium text-slate-900 flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs">JD</div>
-                                John Doe
-                            </td>
-                            <td className="px-6 py-4 text-slate-600">Super Admin</td>
-                            <td className="px-6 py-4"><span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">Active</span></td>
-                            <td className="px-6 py-4 text-right"><button className="text-blue-600 hover:text-blue-800 font-medium">Edit</button></td>
-                        </tr>
-                         <tr className="group hover:bg-slate-50">
-                            <td className="px-6 py-4 font-medium text-slate-900 flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center font-bold text-xs">JS</div>
-                                Jane Smith
-                            </td>
-                            <td className="px-6 py-4 text-slate-600">Staff Accountant</td>
-                             <td className="px-6 py-4"><span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">Active</span></td>
-                            <td className="px-6 py-4 text-right"><button className="text-blue-600 hover:text-blue-800 font-medium">Edit</button></td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
+            {isLoading ? (
+                <div className="space-y-3">
+                    {[1, 2, 3].map(i => <div key={i} className="h-14 bg-slate-100 rounded-xl animate-pulse" />)}
+                </div>
+            ) : members.length === 0 ? (
+                <div className="bg-white border border-dashed border-slate-200 rounded-xl p-12 text-center">
+                    <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
+                        <Users size={28} />
+                    </div>
+                    <h4 className="text-base font-semibold text-slate-900">No team members added yet</h4>
+                    <p className="text-slate-500 text-sm mt-1 mb-4">Invite colleagues to give them access to the practice.</p>
+                    <button className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">
+                        Invite your first team member
+                    </button>
+                </div>
+            ) : (
+                <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                    <table className="w-full text-left text-sm">
+                        <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-medium">
+                            <tr>
+                                <th className="px-6 py-3">Name</th>
+                                <th className="px-6 py-3">Role</th>
+                                <th className="px-6 py-3">Status</th>
+                                <th className="px-6 py-3 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                            {members.map(m => (
+                                <tr key={m.id} className="group hover:bg-slate-50">
+                                    <td className="px-6 py-4 font-medium text-slate-900 flex items-center gap-3">
+                                        <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs">{initials(m.name)}</div>
+                                        {m.name}
+                                    </td>
+                                    <td className="px-6 py-4 text-slate-600">{m.role}</td>
+                                    <td className="px-6 py-4">
+                                        {m.status === 'pending' ? (
+                                            <span className="px-2 py-1 bg-amber-100 text-amber-700 rounded-full text-xs font-medium">Pending</span>
+                                        ) : (
+                                            <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">Active</span>
+                                        )}
+                                    </td>
+                                    <td className="px-6 py-4 text-right"><button className="text-blue-600 hover:text-blue-800 font-medium">Edit</button></td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
         </div>
     );
 }
@@ -98,6 +126,12 @@ export function HMRCTab() {
 
 // --- Tab 3: Workflow Rules ---
 export function WorkflowTab() {
+    const { rules, isLoading } = useAutomationRules();
+
+    const handleToggle = (id: string, current: boolean) => {
+        toggleAutomationRule(id, !current).catch(() => {/* SWR revalidate restores state */});
+    };
+
     return (
         <div className="space-y-6">
              <div>
@@ -105,29 +139,42 @@ export function WorkflowTab() {
                 <p className="text-slate-500 text-sm">Configure how the system reacts to client events.</p>
             </div>
 
-            <div className="space-y-4">
-                {[
-                    { title: "Auto-create CT600 task", desc: "When a new accounting period starts", active: true },
-                    { title: "Send client onboarding email", desc: "When a new client is added", active: true },
-                    { title: "Flag high-value VAT returns", desc: "When VAT reliability check fails", active: false },
-                    { title: "Archive documents after 7 years", desc: "Automatically move to cold storage", active: false },
-                ].map((rule, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-4 bg-white border border-slate-200 rounded-xl">
-                        <div className="flex items-start gap-3">
-                            <div className="mt-1 p-2 bg-indigo-50 text-indigo-600 rounded-lg">
-                                <Zap size={18} />
-                            </div>
-                            <div>
-                                <h4 className="font-semibold text-slate-900 text-sm">{rule.title}</h4>
-                                <p className="text-xs text-slate-500">{rule.desc}</p>
-                            </div>
-                        </div>
-                        <div className={`w-12 h-6 rounded-full relative transition-colors cursor-pointer ${rule.active ? 'bg-blue-600' : 'bg-slate-200'}`}>
-                            <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all shadow-sm ${rule.active ? 'left-7' : 'left-1'}`}></div>
-                        </div>
+            {isLoading ? (
+                <div className="space-y-4">
+                    {[1, 2, 3].map(i => <div key={i} className="h-20 bg-slate-100 rounded-xl animate-pulse" />)}
+                </div>
+            ) : rules.length === 0 ? (
+                <div className="bg-white border border-dashed border-slate-200 rounded-xl p-12 text-center">
+                    <div className="w-16 h-16 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-4 text-indigo-400">
+                        <Zap size={28} />
                     </div>
-                ))}
-            </div>
+                    <h4 className="text-base font-semibold text-slate-900">No automation rules configured yet</h4>
+                    <p className="text-slate-500 text-sm mt-1">Automation rules will appear here once your practice administrator adds them.</p>
+                </div>
+            ) : (
+                <div className="space-y-4">
+                    {rules.map(rule => (
+                        <div key={rule.id} className="flex items-center justify-between p-4 bg-white border border-slate-200 rounded-xl">
+                            <div className="flex items-start gap-3">
+                                <div className="mt-1 p-2 bg-indigo-50 text-indigo-600 rounded-lg">
+                                    <Zap size={18} />
+                                </div>
+                                <div>
+                                    <h4 className="font-semibold text-slate-900 text-sm">{rule.title}</h4>
+                                    <p className="text-xs text-slate-500">{rule.description}</p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => handleToggle(rule.id, rule.active)}
+                                aria-label={rule.active ? 'Disable rule' : 'Enable rule'}
+                                className={`w-12 h-6 rounded-full relative transition-colors cursor-pointer ${rule.active ? 'bg-blue-600' : 'bg-slate-200'}`}
+                            >
+                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all shadow-sm ${rule.active ? 'left-7' : 'left-1'}`}></div>
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            )}
         </div>
     );
 }
