@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, ChevronRight, User, Building2, Users, ArrowLeft, Info, HelpCircle, AlertCircle } from 'lucide-react';
-import { createClient } from '../hooks/useClients';
+import { createClient, patchClient } from '../hooks/useClients';
 
 // --- Validation ---
 
@@ -56,6 +56,9 @@ export function CreateClientWizard() {
         utr: '',
         crn: '',
         vat: '',
+        accountingPeriodEnd: '',
+        vatRegistered: false,
+        vatQuarterEnd: '',
         entities: []
     });
 
@@ -93,7 +96,20 @@ export function CreateClientWizard() {
             return;
         }
         try {
-            await createClient(formData);
+            const created = await createClient(formData);
+            const newId = created?.data?.id || created?.id;
+
+            // Persist compliance dates to their canonical columns (deadline engine input).
+            if (newId) {
+                const fields: Record<string, any> = {};
+                if (formData.type === 'Company' && formData.dateMetadata) fields.incorporation_date = formData.dateMetadata;
+                if (formData.accountingPeriodEnd) fields.accounting_period_end = formData.accountingPeriodEnd;
+                if (formData.vatRegistered) {
+                    fields.vat_registered = true;
+                    if (formData.vatQuarterEnd) fields.vat_quarter_end = formData.vatQuarterEnd;
+                }
+                if (Object.keys(fields).length > 0) await patchClient(newId, fields).catch(() => {});
+            }
             navigate('/clients');
         } catch (err: any) {
             alert(err.message || 'Failed to create client');
@@ -695,12 +711,53 @@ function HMRCRefsStep({ data, update, errors, touched, markTouched }: any) {
                          VAT Number (Optional)
                          <span className="text-xs font-normal text-slate-400">9 digits</span>
                      </label>
-                     <input 
-                        value={data.vat} 
-                        onChange={e => update('vat', e.target.value)} 
-                        className="w-full px-4 py-2.5 border border-slate-200 rounded-lg font-mono placeholder:text-slate-300 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all" 
-                        placeholder="GB 123 4567 89" 
+                     <input
+                        value={data.vat}
+                        onChange={e => update('vat', e.target.value)}
+                        className="w-full px-4 py-2.5 border border-slate-200 rounded-lg font-mono placeholder:text-slate-300 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                        placeholder="GB 123 4567 89"
                     />
+                </div>
+
+                {/* Compliance dates — feed the deadline engine */}
+                <div className="pt-4 mt-2 border-t border-slate-100 space-y-4">
+                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">Compliance Dates</h3>
+
+                    {data.type === 'Company' && (
+                        <div className="space-y-2">
+                            <label className="text-sm font-semibold text-slate-700">Accounting Period End <span className="text-xs font-normal text-slate-400">(optional)</span></label>
+                            <input
+                                type="date"
+                                value={data.accountingPeriodEnd}
+                                onChange={e => update('accountingPeriodEnd', e.target.value)}
+                                className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all text-slate-600"
+                            />
+                            <p className="text-xs text-slate-400">If left blank, derived from incorporation date.</p>
+                        </div>
+                    )}
+
+                    <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={data.vatRegistered}
+                            onChange={e => update('vatRegistered', e.target.checked)}
+                            className="w-4 h-4 text-blue-600 rounded"
+                        />
+                        <span className="text-sm font-medium text-slate-700">VAT registered</span>
+                    </label>
+
+                    {data.vatRegistered && (
+                        <div className="space-y-2">
+                            <label className="text-sm font-semibold text-slate-700">VAT Quarter End <span className="text-xs font-normal text-slate-400">(optional)</span></label>
+                            <input
+                                type="date"
+                                value={data.vatQuarterEnd}
+                                onChange={e => update('vatQuarterEnd', e.target.value)}
+                                className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all text-slate-600"
+                            />
+                            <p className="text-xs text-slate-400">If left blank, calendar quarters are assumed.</p>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

@@ -11,7 +11,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { lookupCompany, CompanyInfo } from '../../api/companiesHouse';
-import { updateClient } from '../../hooks/useClients';
+import { updateClient, patchClient } from '../../hooks/useClients';
 
 interface Props {
   client: {
@@ -103,6 +103,10 @@ export function CompaniesHousePanel({ client, onUpdated }: Props) {
         sicCodes: freshData.sic_codes,
         chData: snapshot,
       });
+      // Persist incorporation_date to the canonical column the deadline engine reads.
+      if (freshData.date_of_creation) {
+        await patchClient(client.id, { incorporation_date: freshData.date_of_creation }).catch(() => {});
+      }
       setState('success');
       setFreshData(null);
       onUpdated?.();

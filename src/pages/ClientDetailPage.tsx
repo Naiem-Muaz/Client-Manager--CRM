@@ -29,6 +29,7 @@ import { ClientSnapshotsTab } from '../components/clients/ClientSnapshotsTab';
 import { ClientHmrcTab } from '../components/clients/ClientHmrcTab';
 import { ComplianceSimulator } from '../components/dev/ComplianceSimulator';
 import { CompaniesHousePanel } from '../components/clients/CompaniesHousePanel';
+import { ClientComplianceDatesCard } from '../components/clients/ClientComplianceDatesCard';
 import { ClientAuthority, DEFAULT_AUTHORITY } from '../types/ClientAuthority';
 
 const MOCK_STARTING_AUTHORITY: ClientAuthority = {
@@ -186,6 +187,7 @@ export function ClientDetailPage() {
       </div>
 
       {activeTab === 'overview' && (
+        <div className="space-y-8">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 min-h-[600px]">
               {/* Column 1: Entities */}
               <div className="h-full">
@@ -212,6 +214,9 @@ export function ClientDetailPage() {
                     </div>
                </div>
           </div>
+
+          <ClientComplianceDatesCard client={client} />
+        </div>
       )}
 
       {activeTab === 'transactions' && <ClientTransactionsTab clientId={client.id} />}
