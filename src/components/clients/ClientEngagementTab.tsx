@@ -1,128 +1,105 @@
 import React, { useState } from 'react';
-import { FileSignature, Send, Download, CheckCircle, Clock, AlertCircle, PenTool } from 'lucide-react';
+import { FileSignature, Plus, CheckCircle, Clock, AlertCircle, Download, ArrowLeft, Loader2 } from 'lucide-react';
 import { EngagementWizard } from '../engagement/EngagementWizard';
-import { SigningInterface } from '../engagement/SigningInterface';
-import { useEngagementLetters, createEngagementLetter, signEngagementLetter } from '../../hooks/useEngagement';
+import { useEngagementLetters, fetchCertificateUrl, Engagement } from '../../hooks/useEngagement';
 
-interface Letter {
-    id: string;
-    title: string;
-    sentDate: string;
-    status: 'Sent' | 'Signed' | 'Expired';
-    services: string[];
-    content?: string;
-}
+const STATUS: Record<string, { label: string; cls: string; icon: any }> = {
+  draft: { label: 'Draft', cls: 'bg-slate-100 text-slate-600', icon: FileSignature },
+  sent: { label: 'Sent', cls: 'bg-blue-100 text-blue-700', icon: Clock },
+  signed: { label: 'Signed', cls: 'bg-emerald-100 text-emerald-700', icon: CheckCircle },
+  expired: { label: 'Expired', cls: 'bg-red-100 text-red-700', icon: AlertCircle },
+};
 
-export function ClientEngagementTab({ client }: { client: any }) {
-    // Live hook integration targeting Node Orchestrator
-    const { letters, isLoading, mutate } = useEngagementLetters(client.id);
-    const safeLetters: Letter[] = Array.isArray(letters) ? letters : [];
-    
-    const [showWizard, setShowWizard] = useState(false);
-    const [signingLetter, setSigningLetter] = useState<Letter | null>(null);
+export function ClientEngagementTab({ clientId }: { clientId: string }) {
+  const { letters, isLoading, mutate } = useEngagementLetters(clientId);
+  const [showWizard, setShowWizard] = useState(false);
+  const [selected, setSelected] = useState<Engagement | null>(null);
+  const [downloading, setDownloading] = useState(false);
 
-    const handleCreate = async (newLetter: any) => {
-        // Assume modal executes standard SWR hook directly, or we optimistic update
-        mutate(undefined);
-        setShowWizard(false);
-    };
+  const download = async (eng: Engagement) => {
+    setDownloading(true);
+    try {
+      const url = await fetchCertificateUrl(clientId, eng.id);
+      if (url) window.open(url, '_blank'); else window.alert('Certificate is not ready yet.');
+    } catch { window.alert('Could not fetch the certificate.'); }
+    finally { setDownloading(false); }
+  };
 
-    const handleSignComplete = async (signatureData: any) => {
-        if (!signingLetter) return;
-        
-        await signEngagementLetter(client.id, signingLetter.id, signatureData);
-        setSigningLetter(null);
-    };
-
+  if (selected) {
+    const s = STATUS[selected.status] || STATUS.draft;
     return (
-        <div className="space-y-6">
-            <div className="flex justify-between items-center">
-                <div>
-                    <h2 className="text-lg font-bold text-slate-900">Engagement Letters</h2>
-                    <p className="text-sm text-slate-500">Manage contractual agreements and authority.</p>
-                </div>
-                <button 
-                    onClick={() => setShowWizard(true)}
-                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
-                >
-                    <FileSignature size={16} />
-                    Create New Letter
-                </button>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4">
-                {isLoading && (
-                   <div className="h-24 bg-slate-100 animate-pulse rounded-xl border border-slate-200"></div>
-                )}
-                {safeLetters.map((letter: any) => (
-                    <div key={letter.id} className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm hover:border-blue-300 transition-colors flex items-center justify-between">
-                        <div className="flex items-start gap-4">
-                            <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 ${
-                                letter.status === 'Signed' ? 'bg-emerald-100 text-emerald-600' :
-                                letter.status === 'Sent' ? 'bg-blue-100 text-blue-600' :
-                                'bg-slate-100 text-slate-500'
-                            }`}>
-                                {letter.status === 'Signed' ? <CheckCircle size={24} /> :
-                                 letter.status === 'Sent' ? <Clock size={24} /> :
-                                 <FileSignature size={24} />}
-                            </div>
-                            <div>
-                                <h3 className="font-bold text-slate-900 text-lg mb-1">{letter.title}</h3>
-                                <div className="flex items-center gap-3 text-sm text-slate-500">
-                                    <span>Sent: {letter.sentDate}</span>
-                                    <span>•</span>
-                                    <div className="flex gap-1">
-                                        {letter.services?.map((s: string) => (
-                                            <span key={s} className="bg-slate-100 px-2 py-0.5 rounded text-xs font-medium text-slate-600">{s}</span>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="flex items-center gap-3">
-                            {letter.status === 'Sent' && (
-                                <>
-                                    <button 
-                                        onClick={() => setSigningLetter(letter)}
-                                        className="flex items-center gap-2 px-3 py-1.5 text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg text-sm font-medium transition-colors shadow-sm animate-pulse"
-                                    >
-                                        <PenTool size={16} /> Client Portal View
-                                    </button>
-                                    <button className="flex items-center gap-2 px-3 py-1.5 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg text-sm font-medium transition-colors">
-                                        <Send size={16} /> Resend
-                                    </button>
-                                </>
-                            )}
-                            <button className="flex items-center gap-2 px-3 py-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg text-sm font-medium transition-colors border border-slate-200">
-                                <Download size={16} /> PDF
-                            </button>
-                            <span className={`px-3 py-1 rounded-full text-sm font-bold ${
-                                letter.status === 'Signed' ? 'bg-emerald-100 text-emerald-700' :
-                                letter.status === 'Sent' ? 'bg-amber-100 text-amber-700' :
-                                'bg-slate-100 text-slate-600'
-                            }`}>
-                                {letter.status.toUpperCase()}
-                            </span>
-                        </div>
-                    </div>
-                ))}
-            </div>
-
-            <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 flex items-start gap-3">
-                <AlertCircle size={20} className="text-blue-600 shrink-0 mt-0.5" />
-                <div className="text-sm">
-                    <h4 className="font-bold text-blue-900">Legal Authority</h4>
-                    <p className="text-blue-800 opacity-90">
-                        Engagement letters are required before you can act as an agent for this client. 
-                        Ensure a signed copy is stored in the Documents tab if not generated here.
-                    </p>
-                </div>
-            </div>
-
-            {/* Modals */}
-            {showWizard && <EngagementWizard client={client} onClose={() => setShowWizard(false)} onComplete={handleCreate} />}
-            {signingLetter && <SigningInterface letter={signingLetter} onClose={() => setSigningLetter(null)} onSign={handleSignComplete} />}
+      <div className="max-w-3xl space-y-5">
+        <button onClick={() => setSelected(null)} className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-slate-800"><ArrowLeft size={16} /> Back to engagements</button>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-slate-900">{selected.templateName || 'Engagement letter'}</h2>
+            <p className="text-sm text-slate-500">Created {new Date(selected.createdAt).toLocaleDateString('en-GB')}</p>
+          </div>
+          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${s.cls}`}><s.icon size={12} /> {s.label}</span>
         </div>
+
+        {selected.status === 'signed' && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 text-sm text-emerald-800 flex items-center justify-between">
+            <span>Signed by <strong>{selected.signerName}</strong> on {selected.signedAt ? new Date(selected.signedAt).toLocaleString('en-GB') : ''}</span>
+            <button onClick={() => download(selected)} disabled={downloading} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-medium hover:bg-emerald-700 disabled:opacity-50">
+              {downloading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} Certificate
+            </button>
+          </div>
+        )}
+        {selected.status === 'sent' && selected.signingTokenExpiresAt && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
+            Sent for signature — link expires {new Date(selected.signingTokenExpiresAt).toLocaleDateString('en-GB')}.
+          </div>
+        )}
+
+        <div className="bg-white border border-slate-200 rounded-xl p-8 prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: selected.templateBody || '' }} />
+      </div>
     );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-lg font-bold text-slate-900">Engagement Letters</h2>
+          <p className="text-sm text-slate-500">Generate, send for e-signature, and store signed copies.</p>
+        </div>
+        <button onClick={() => setShowWizard(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium shadow-sm text-sm">
+          <Plus size={16} /> New engagement letter
+        </button>
+      </div>
+
+      {isLoading ? (
+        <div className="space-y-3">{[1, 2].map(i => <div key={i} className="h-16 bg-slate-100 rounded-xl animate-pulse" />)}</div>
+      ) : letters.length === 0 ? (
+        <div className="bg-white border border-dashed border-slate-200 rounded-xl p-12 text-center">
+          <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400"><FileSignature size={28} /></div>
+          <h4 className="font-semibold text-slate-900">No engagement letters yet</h4>
+          <p className="text-slate-500 text-sm mt-1 mb-4">Engagement letters formalise your authority to act for this client.</p>
+          <button onClick={() => setShowWizard(true)} className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">New engagement letter</button>
+        </div>
+      ) : (
+        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100">
+          {letters.map(l => {
+            const s = STATUS[l.status] || STATUS.draft;
+            return (
+              <button key={l.id} onClick={() => setSelected(l)} className="w-full flex items-center justify-between px-5 py-4 hover:bg-slate-50 text-left">
+                <div>
+                  <div className="font-semibold text-slate-900">{l.templateName || 'Engagement letter'}</div>
+                  <div className="text-xs text-slate-400 mt-0.5">
+                    {l.status === 'signed' ? `Signed by ${l.signerName}` : l.status === 'sent' ? `Sent ${l.sentAt ? new Date(l.sentAt).toLocaleDateString('en-GB') : ''}` : `Created ${new Date(l.createdAt).toLocaleDateString('en-GB')}`}
+                  </div>
+                </div>
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${s.cls}`}><s.icon size={12} /> {s.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {showWizard && (
+        <EngagementWizard clientId={clientId} onClose={() => setShowWizard(false)} onDone={() => { setShowWizard(false); mutate(); }} />
+      )}
+    </div>
+  );
 }

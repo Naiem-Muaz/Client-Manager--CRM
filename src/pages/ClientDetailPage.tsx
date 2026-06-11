@@ -168,7 +168,7 @@ export function ClientDetailPage() {
       {/* Tabs */}
       <div className="border-b border-slate-200 mb-8 overflow-x-auto">
         <div className="flex gap-8 whitespace-nowrap">
-            {['overview', 'activity', 'transactions', 'snapshots', 'accounting', 'tax', 'hmrc', 'documents'].map(tab => (
+            {['overview', 'activity', 'transactions', 'snapshots', 'accounting', 'tax', 'hmrc', 'documents', 'engagement'].map(tab => (
                 <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
@@ -227,6 +227,7 @@ export function ClientDetailPage() {
       {activeTab === 'tax' && <ClientTaxTab client={client} hasEngagement={hasEngagement} authority={authority} />}
       {activeTab === 'hmrc' && <ClientHmrcTab clientId={client.id} />}
       {activeTab === 'documents' && <ClientDocumentsTab client={client} />}
+      {activeTab === 'engagement' && <ClientEngagementTab clientId={client.id} />}
       {activeTab === 'activity' && <ActivityFeed clientId={client.id} />}
       
       <ComplianceSimulator 
