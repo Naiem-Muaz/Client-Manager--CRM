@@ -1,8 +1,26 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
-import { MoreHorizontal, AlertTriangle, AlertCircle, Building2, User } from 'lucide-react';
+import React, { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { MoreHorizontal, Eye, Archive, User } from 'lucide-react';
+import { archiveClient } from '../../hooks/useClients';
 
 export function ClientTable({ clients }: { clients: any[] }) {
+    const navigate = useNavigate();
+    const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+    const [archivingId, setArchivingId] = useState<string | null>(null);
+
+    const handleArchive = async (client: any) => {
+        setOpenMenuId(null);
+        if (!window.confirm(`Archive ${client.legalName}? They will be hidden from the active client list.`)) return;
+        setArchivingId(client.id);
+        try {
+            await archiveClient(client.id);
+        } catch (e) {
+            window.alert('Failed to archive client. Please try again.');
+        } finally {
+            setArchivingId(null);
+        }
+    };
+
     if (clients.length === 0) {
         return (
             <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
@@ -85,9 +103,35 @@ export function ClientTable({ clients }: { clients: any[] }) {
                                 />
                             </td>
                             <td className="px-6 py-4 text-right z-30 relative">
-                                <button className="p-2 text-slate-400 hover:text-brand-primary hover:bg-bg-main rounded-lg transition-colors relative z-30">
-                                    <MoreHorizontal size={18} />
-                                </button>
+                                <div className="relative inline-block">
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === client.id ? null : client.id); }}
+                                        disabled={archivingId === client.id}
+                                        aria-label="Client actions"
+                                        className="p-2 text-slate-400 hover:text-brand-primary hover:bg-bg-main rounded-lg transition-colors relative z-30 disabled:opacity-50"
+                                    >
+                                        <MoreHorizontal size={18} />
+                                    </button>
+                                    {openMenuId === client.id && (
+                                        <>
+                                            <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setOpenMenuId(null); }} />
+                                            <div className="absolute right-0 mt-1 w-44 bg-white border border-slate-200 rounded-lg shadow-lg z-50 py-1 text-left">
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); setOpenMenuId(null); navigate(`/clients/${client.id}`); }}
+                                                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                                                >
+                                                    <Eye size={15} className="text-slate-400" /> View
+                                                </button>
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); handleArchive(client); }}
+                                                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                                                >
+                                                    <Archive size={15} /> Archive
+                                                </button>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
                             </td>
                         </tr>
                     )})}

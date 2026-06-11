@@ -150,6 +150,13 @@ export async function updateClient(clientId: string, clientData: Record<string, 
   return response.data;
 }
 
+export async function archiveClient(clientId: string) {
+  const response = await NextGenAPI.patch(`/brain/clients/${clientId}`, { status: 'archived' });
+  mutate('/brain/clients');
+  mutate(`/brain/clients/${clientId}`);
+  return response.data;
+}
+
 export async function reviewTransaction(clientId: string, txnId: string) {
   const response = await NextGenAPI.post(`/brain/clients/${clientId}/transactions/${txnId}/review`);
   mutate(`/brain/clients/${clientId}/transactions`);

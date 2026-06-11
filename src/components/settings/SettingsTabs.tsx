@@ -94,29 +94,29 @@ export function HMRCTab() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="space-y-4">
                     <h3 className="font-semibold text-slate-900 border-b border-slate-200 pb-2">Agent Credentials</h3>
-                    
+
                     <div className="space-y-2">
                         <label className="text-xs font-bold text-slate-500 uppercase">Self Assessment (SA) Agent Code</label>
-                        <div className="flex items-center gap-2 p-2 bg-slate-100 rounded border border-slate-200 text-slate-500 font-mono text-sm cursor-not-allowed">
-                            <Shield size={14} /> 112233
+                        <div className="flex items-center gap-2 p-2 bg-slate-50 rounded border border-dashed border-slate-200 text-slate-400 text-sm">
+                            <Shield size={14} /> No agent code configured yet
                         </div>
                     </div>
                      <div className="space-y-2">
                         <label className="text-xs font-bold text-slate-500 uppercase">Corporation Tax (CT) Agent Code</label>
-                         <div className="flex items-center gap-2 p-2 bg-slate-100 rounded border border-slate-200 text-slate-500 font-mono text-sm cursor-not-allowed">
-                            <Shield size={14} /> CT8821
+                         <div className="flex items-center gap-2 p-2 bg-slate-50 rounded border border-dashed border-slate-200 text-slate-400 text-sm">
+                            <Shield size={14} /> No agent code configured yet
                         </div>
                     </div>
                 </div>
 
                 <div className="space-y-4">
                     <h3 className="font-semibold text-slate-900 border-b border-slate-200 pb-2">Gateway Status</h3>
-                    <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-6 text-center">
-                        <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                            <CheckCircle size={32} />
+                    <div className="bg-slate-50 border border-dashed border-slate-200 rounded-xl p-6 text-center">
+                        <div className="w-16 h-16 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <Lock size={28} />
                         </div>
-                        <h4 className="font-bold text-emerald-800 text-lg">Connected to HMRC</h4>
-                        <p className="text-emerald-700 text-sm mt-1">Token expires in 17 months</p>
+                        <h4 className="font-bold text-slate-700 text-lg">Gateway not configured</h4>
+                        <p className="text-slate-500 text-sm mt-1">HMRC connection details will appear here once authorised.</p>
                     </div>
                 </div>
             </div>
