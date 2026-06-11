@@ -37,6 +37,20 @@ export interface CHSnapshot {
 
 type PanelState = 'idle' | 'loading' | 'preview' | 'saving' | 'success' | 'error_not_found' | 'error_api' | 'error_save';
 
+// Companies House returns a single registered-address string. Best-effort split into
+// the canonical address columns (postcode detected via UK postcode pattern).
+function parseAddress(addr: string | null | undefined): { line1: string | null; line2: string | null; city: string | null; postcode: string | null } {
+  if (!addr) return { line1: null, line2: null, city: null, postcode: null };
+  const parts = addr.split(',').map(p => p.trim()).filter(Boolean);
+  const ukPostcode = /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i;
+  let postcode: string | null = null;
+  if (parts.length && ukPostcode.test(parts[parts.length - 1])) postcode = parts.pop() as string;
+  const city = parts.length ? parts.pop() as string : null;
+  const line1 = parts.length ? parts.shift() as string : null;
+  const line2 = parts.length ? parts.join(', ') : null;
+  return { line1, line2, city, postcode };
+}
+
 function FieldDiff({ label, stored, fresh }: { label: string; stored?: string | null; fresh?: string | null }) {
   const changed = stored !== fresh && fresh !== undefined && fresh !== null;
   return (
@@ -94,19 +108,23 @@ export function CompaniesHousePanel({ client, onUpdated }: Props) {
     };
 
     try {
-      await updateClient(client.id, {
-        legalName: freshData.company_name,
-        registeredAddress: freshData.registered_address,
-        incorporationDate: freshData.date_of_creation,
-        companyStatus: freshData.company_status,
-        companyType: freshData.company_type,
-        sicCodes: freshData.sic_codes,
-        chData: snapshot,
+      // Keep the display name fresh via the profile agent…
+      await updateClient(client.id, { legalName: freshData.company_name });
+
+      // …and persist Companies House data to the canonical client columns.
+      const addr = parseAddress(freshData.registered_address);
+      await patchClient(client.id, {
+        company_number: freshData.company_number,
+        incorporation_date: freshData.date_of_creation || null,
+        company_status: freshData.company_status,
+        company_type: freshData.company_type,
+        sic_codes: freshData.sic_codes,
+        address_line1: addr.line1,
+        address_line2: addr.line2,
+        city: addr.city,
+        postcode: addr.postcode,
+        ch_data: snapshot,
       });
-      // Persist incorporation_date to the canonical column the deadline engine reads.
-      if (freshData.date_of_creation) {
-        await patchClient(client.id, { incorporation_date: freshData.date_of_creation }).catch(() => {});
-      }
       setState('success');
       setFreshData(null);
       onUpdated?.();

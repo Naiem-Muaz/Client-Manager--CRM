@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { CalendarClock, Check, Loader2 } from 'lucide-react';
 import { patchClient } from '../../hooks/useClients';
+import { useTeamMembers } from '../../hooks/useTeam';
 
 /**
  * Editable compliance dates that feed the deadline engine. Persists directly to the
@@ -15,6 +16,8 @@ export function ClientComplianceDatesCard({ client, onSaved }: { client: any; on
   const [accountingPeriodEnd, setAccountingPeriodEnd] = useState(toDateInput(client.accounting_period_end));
   const [vatRegistered, setVatRegistered] = useState(!!client.vat_registered);
   const [vatQuarterEnd, setVatQuarterEnd] = useState(toDateInput(client.vat_quarter_end));
+  const [assignedStaffId, setAssignedStaffId] = useState<string>(client.assigned_staff_id || '');
+  const { members } = useTeamMembers();
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,6 +30,7 @@ export function ClientComplianceDatesCard({ client, onSaved }: { client: any; on
         accounting_period_end: isCompany ? (accountingPeriodEnd || null) : undefined,
         vat_registered: vatRegistered,
         vat_quarter_end: vatRegistered ? (vatQuarterEnd || null) : null,
+        assigned_staff_id: assignedStaffId || null,
       });
       setSaved(true);
       onSaved?.();
@@ -73,6 +77,14 @@ export function ClientComplianceDatesCard({ client, onSaved }: { client: any; on
             <input type="date" value={vatQuarterEnd} onChange={e => setVatQuarterEnd(e.target.value)} className={inputCls} />
           </div>
         )}
+
+        <div className="space-y-1">
+          <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Assigned staff</label>
+          <select value={assignedStaffId} onChange={e => setAssignedStaffId(e.target.value)} className={inputCls}>
+            <option value="">Unassigned</option>
+            {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </select>
+        </div>
       </div>
 
       <div className="flex items-center gap-3 mt-4">

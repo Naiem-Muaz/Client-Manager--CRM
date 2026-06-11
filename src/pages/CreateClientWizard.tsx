@@ -49,16 +49,22 @@ export function CreateClientWizard() {
         lastName: '',
         companyName: '',
         dateMetadata: '', // DOB or Incorporation
-        address: '',
+        address: '', // address line 1
+        addressLine2: '',
+        city: '',
         postcode: '',
         email: '',
         phone: '',
         utr: '',
+        nino: '',
         crn: '',
         vat: '',
         accountingPeriodEnd: '',
         vatRegistered: false,
+        vatNumber: '',
         vatQuarterEnd: '',
+        incomeBand: '',
+        mtdStatus: 'not-enrolled',
         entities: []
     });
 
@@ -99,16 +105,32 @@ export function CreateClientWizard() {
             const created = await createClient(formData);
             const newId = created?.data?.id || created?.id;
 
-            // Persist compliance dates to their canonical columns (deadline engine input).
+            // Persist the expanded fields to their canonical columns (deadline engine,
+            // MTD centre, contact, tax identifiers).
             if (newId) {
-                const fields: Record<string, any> = {};
-                if (formData.type === 'Company' && formData.dateMetadata) fields.incorporation_date = formData.dateMetadata;
-                if (formData.accountingPeriodEnd) fields.accounting_period_end = formData.accountingPeriodEnd;
+                const fields: Record<string, any> = {
+                    phone: formData.phone || null,
+                    address_line1: formData.address || null,
+                    address_line2: formData.addressLine2 || null,
+                    city: formData.city || null,
+                    postcode: formData.postcode || null,
+                    country: 'United Kingdom',
+                    utr: formData.utr || null,
+                    nino: formData.nino || null,
+                    income_band: formData.incomeBand || null,
+                    mtd_status: formData.mtdStatus || null,
+                    vat_registered: !!formData.vatRegistered,
+                };
+                if (formData.type === 'Company') {
+                    fields.company_number = formData.crn || null;
+                    if (formData.dateMetadata) fields.incorporation_date = formData.dateMetadata;
+                    if (formData.accountingPeriodEnd) fields.accounting_period_end = formData.accountingPeriodEnd;
+                }
                 if (formData.vatRegistered) {
-                    fields.vat_registered = true;
+                    fields.vat_number = formData.vatNumber || formData.vat || null;
                     if (formData.vatQuarterEnd) fields.vat_quarter_end = formData.vatQuarterEnd;
                 }
-                if (Object.keys(fields).length > 0) await patchClient(newId, fields).catch(() => {});
+                await patchClient(newId, fields).catch(() => {});
             }
             navigate('/clients');
         } catch (err: any) {
@@ -575,13 +597,40 @@ function IdentityStep({ data, update, errors, touched, markTouched }: any) {
                                 placeholder="Street address" 
                              />
                         </div>
+                         <div className="col-span-2 space-y-2">
+                             <label className="text-sm font-semibold text-slate-700">Address Line 2</label>
+                             <input
+                                value={data.addressLine2}
+                                onChange={e => update('addressLine2', e.target.value)}
+                                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
+                                placeholder="Apartment, suite, etc. (optional)"
+                             />
+                        </div>
+                         <div className="space-y-2">
+                             <label className="text-sm font-semibold text-slate-700">City</label>
+                             <input
+                                value={data.city}
+                                onChange={e => update('city', e.target.value)}
+                                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
+                                placeholder="e.g. London"
+                             />
+                        </div>
                          <div className="space-y-2">
                              <label className="text-sm font-semibold text-slate-700">Postcode</label>
-                             <input 
-                                value={data.postcode} 
-                                onChange={e => update('postcode', e.target.value)} 
-                                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium" 
-                                placeholder="e.g. SW1A 1AA" 
+                             <input
+                                value={data.postcode}
+                                onChange={e => update('postcode', e.target.value)}
+                                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
+                                placeholder="e.g. SW1A 1AA"
+                             />
+                        </div>
+                         <div className="space-y-2">
+                             <label className="text-sm font-semibold text-slate-700">Phone</label>
+                             <input
+                                value={data.phone}
+                                onChange={e => update('phone', e.target.value)}
+                                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
+                                placeholder="e.g. 020 7946 0000"
                              />
                         </div>
                          <div className="space-y-2">
@@ -691,6 +740,50 @@ function HMRCRefsStep({ data, update, errors, touched, markTouched }: any) {
                         placeholder="12345 67890"
                     />
                     <FieldError name="utr" errors={errors} touched={touched} />
+                </div>
+
+                {data.type !== 'Company' && (
+                    <div className="space-y-2">
+                        <label className="text-sm font-semibold text-slate-700 flex items-center justify-between">
+                            National Insurance Number (NINO)
+                            <span className="text-xs font-normal text-slate-400">optional</span>
+                        </label>
+                        <input
+                            value={data.nino}
+                            onChange={e => update('nino', e.target.value)}
+                            className="w-full px-4 py-2.5 border border-slate-200 rounded-lg font-mono placeholder:text-slate-300 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                            placeholder="QQ 12 34 56 C"
+                        />
+                    </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                        <label className="text-sm font-semibold text-slate-700">Income Band</label>
+                        <select
+                            value={data.incomeBand}
+                            onChange={e => update('incomeBand', e.target.value)}
+                            className="w-full px-4 py-2.5 border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all text-slate-600"
+                        >
+                            <option value="">Not set</option>
+                            <option value="under-30k">Under £30k</option>
+                            <option value="30k-50k">£30k–£50k</option>
+                            <option value="50k-plus">Over £50k</option>
+                        </select>
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-sm font-semibold text-slate-700">MTD Status</label>
+                        <select
+                            value={data.mtdStatus}
+                            onChange={e => update('mtdStatus', e.target.value)}
+                            className="w-full px-4 py-2.5 border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all text-slate-600"
+                        >
+                            <option value="not-enrolled">Not enrolled</option>
+                            <option value="mandated">Mandated</option>
+                            <option value="voluntary">Voluntary</option>
+                            <option value="exempt">Exempt</option>
+                        </select>
+                    </div>
                 </div>
                 {data.type === 'Company' && (
                      <div className="space-y-2">
