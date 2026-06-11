@@ -14,7 +14,8 @@ import {
   History,
   FileBarChart,
   CloudUpload,
-  Zap
+  Zap,
+  ExternalLink
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -139,6 +140,22 @@ export function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
              )}
           </NavLink>
         ))}
+
+        {/* Cross-product link → MTD Workspace (shared auth, same tab) */}
+        <a
+          href="https://app.taxxdigital.co.uk"
+          className={`flex items-center px-3 py-2.5 rounded-lg transition-all duration-200 group relative mb-1 hover:bg-white/5 hover:text-white text-slate-400 ${collapsed ? 'justify-center' : ''}`}
+        >
+          <ExternalLink size={20} className="transition-colors flex-shrink-0 text-slate-400 group-hover:text-white" />
+          <span className={`whitespace-nowrap overflow-hidden text-sm transition-all duration-300 ${collapsed ? 'w-0 opacity-0' : 'w-auto opacity-100 ml-3'}`}>
+            MTD Workspace →
+          </span>
+          {collapsed && (
+            <div className="absolute left-full ml-3 px-2 py-1 bg-slate-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 shadow-xl border border-slate-700">
+              MTD Workspace →
+            </div>
+          )}
+        </a>
 
       </nav>
 
