@@ -16,6 +16,9 @@ import { DeadlinesPage } from "./pages/DeadlinesPage";
 import { ComplianceDashboard } from "./pages/ComplianceDashboard";
 import { SubmissionsPage } from "./pages/SubmissionsPage";
 import { AuditPage } from "./pages/AuditPage";
+import { VerticalSlicePage } from "./pages/VerticalSlicePage";
+import { MTDCommandCentre } from "./pages/MTDCommandCentre";
+import { SigningPage } from "./pages/SigningPage";
 import { LoginPage } from "./pages/LoginPage";
 import { AuthProvider, RequireAuth } from "./context/AuthContext";
 
@@ -52,6 +55,7 @@ function App() {
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/sign/:token" element={<SigningPage />} />
           <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/clients" element={<ClientListPage />} />
@@ -66,6 +70,8 @@ function App() {
             <Route path="/submissions" element={<SubmissionsPage />} />
             <Route path="/audit" element={<AuditPage />} />
             <Route path="/setup" element={<SetupPage />} />
+            <Route path="/vertical-slice" element={<VerticalSlicePage />} />
+            <Route path="/mtd" element={<MTDCommandCentre />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>

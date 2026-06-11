@@ -195,9 +195,10 @@ export function ClientDocumentsTab({ client }: { client: any }) {
                 </div>
             </div>
 
-            {showUpload && <DocumentUploadModal 
-                category={selectedCategory !== 'All' ? selectedCategory : undefined} 
-                onClose={() => setShowUpload(false)} 
+            {showUpload && <DocumentUploadModal
+                category={selectedCategory !== 'All' ? selectedCategory : undefined}
+                clientId={client.id}
+                onClose={() => setShowUpload(false)}
                 onUpload={handleUpload}
             />}
         </div>

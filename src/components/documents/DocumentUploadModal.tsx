@@ -1,44 +1,72 @@
 import React, { useState } from 'react';
-import { Upload, X, FileText, Tag } from 'lucide-react';
+import { errMsg } from '../../lib/errMsg';
+import { Upload, X, FileText, Tag, AlertCircle } from 'lucide-react';
 import { DocumentCategory, FOLDERS, VaultDocument } from '../../types/DocumentTypes';
+import { uploadDocument } from '../../hooks/useDocuments';
 
 interface Props {
     category?: DocumentCategory;
+    clientId?: string;
+    initialFile?: File | null;
     onClose: () => void;
     onUpload: (doc: VaultDocument) => void;
 }
 
-export function DocumentUploadModal({ category, onClose, onUpload }: Props) {
-    const [file, setFile] = useState<File | null>(null);
+const MAX_SIZE_MB = 25;
+
+export function DocumentUploadModal({ category, clientId, initialFile, onClose, onUpload }: Props) {
+    const [file, setFile] = useState<File | null>(initialFile || null);
     const [selectedCategory, setSelectedCategory] = useState<DocumentCategory>(category || 'Client Uploads');
     const [taxYear, setTaxYear] = useState('');
     const [status, setStatus] = useState<'Draft' | 'Final'>('Draft');
+    const [uploading, setUploading] = useState(false);
+    const [progress, setProgress] = useState(0);
+    const [error, setError] = useState<string | null>(null);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setError(null);
         if (e.target.files && e.target.files[0]) {
-            setFile(e.target.files[0]);
+            const f = e.target.files[0];
+            if (f.size > MAX_SIZE_MB * 1024 * 1024) {
+                setError(`File is too large. Maximum size is ${MAX_SIZE_MB}MB.`);
+                return;
+            }
+            setFile(f);
         }
     };
 
-    const handleUpload = () => {
+    const handleUpload = async () => {
         if (!file) return;
+        setUploading(true);
+        setProgress(0);
+        setError(null);
 
-        const newDoc: VaultDocument = {
-            id: Date.now().toString(),
-            name: file.name,
-            type: file.name.split('.').pop()?.toUpperCase() || 'FILE',
-            size: (file.size / 1024 / 1024).toFixed(2) + ' MB',
-            dateAdded: new Date().toLocaleDateString(),
-            category: selectedCategory,
-            metadata: {
-                isImmutable: status === 'Final',
-                taxYear: taxYear || undefined,
-            },
-            status: status === 'Final' ? 'Final' : 'Draft',
-            uploadedBy: 'Agent'
-        };
+        try {
+            await uploadDocument(file, selectedCategory, clientId, setProgress, {
+                status,
+                ...(taxYear ? { taxYear } : {}),
+            });
 
-        onUpload(newDoc);
+            const newDoc: VaultDocument = {
+                id: Date.now().toString(),
+                name: file.name,
+                type: file.name.split('.').pop()?.toUpperCase() || 'FILE',
+                size: (file.size / 1024 / 1024).toFixed(2) + ' MB',
+                dateAdded: new Date().toLocaleDateString(),
+                category: selectedCategory,
+                metadata: {
+                    isImmutable: status === 'Final',
+                    taxYear: taxYear || undefined,
+                },
+                status: status === 'Final' ? 'Final' : 'Draft',
+                uploadedBy: 'Agent'
+            };
+
+            onUpload(newDoc);
+        } catch (err: any) {
+            setError(errMsg(err, 'Upload failed. Please try again.'));
+            setUploading(false);
+        }
     };
 
     return (
@@ -122,16 +150,35 @@ export function DocumentUploadModal({ category, onClose, onUpload }: Props) {
                         </div>
                     </div>
 
+                    {error && (
+                        <div className="flex items-start gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+                            <AlertCircle size={16} className="shrink-0 mt-0.5" />
+                            <span>{error}</span>
+                        </div>
+                    )}
+
+                    {uploading && (
+                        <div className="space-y-1">
+                            <div className="flex justify-between text-xs text-slate-500">
+                                <span>Uploading…</span>
+                                <span>{progress}%</span>
+                            </div>
+                            <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                                <div className="h-full bg-blue-600 rounded-full transition-all" style={{ width: `${progress}%` }} />
+                            </div>
+                        </div>
+                    )}
+
                     <div className="pt-4 flex items-center gap-3">
-                        <button onClick={onClose} className="flex-1 py-2.5 text-slate-600 font-medium hover:bg-slate-100 rounded-lg transition-colors">
+                        <button onClick={onClose} disabled={uploading} className="flex-1 py-2.5 text-slate-600 font-medium hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50">
                             Cancel
                         </button>
-                        <button 
+                        <button
                             onClick={handleUpload}
-                            disabled={!file}
+                            disabled={!file || uploading}
                             className="flex-1 py-2.5 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm transition-all"
                         >
-                            Upload to Vault
+                            {uploading ? 'Uploading…' : 'Upload to Vault'}
                         </button>
                     </div>
                 </div>

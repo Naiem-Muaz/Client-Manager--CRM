@@ -1,11 +1,49 @@
-import React, { useState } from 'react';
-import { History, Search, Filter, Shield, User, FileText, ArrowRight, Loader2 } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { History, Search, Filter, Shield, FileText, Loader2, Check } from 'lucide-react';
 import { useAuditLogs } from '../hooks/useAudit';
+
+function toCsv(rows: any[]): string {
+    const headers = ['Timestamp', 'User', 'Action', 'Target', 'Evidence'];
+    const escape = (v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const lines = rows.map(r => [r.timestamp, r.user, r.action, r.target, r.evidence].map(escape).join(','));
+    return [headers.join(','), ...lines].join('\n');
+}
 
 export function AuditPage() {
     const [searchTerm, setSearchTerm] = useState('');
+    const [actionFilter, setActionFilter] = useState<string>('all');
+    const [filterOpen, setFilterOpen] = useState(false);
     const { logs: rawLogs, isLoading } = useAuditLogs();
     const auditLogs = Array.isArray(rawLogs) ? rawLogs : [];
+
+    const actionOptions = useMemo(
+        () => Array.from(new Set(auditLogs.map((l: any) => l.action).filter(Boolean))) as string[],
+        [auditLogs]
+    );
+
+    const filteredLogs = useMemo(() => {
+        const term = searchTerm.trim().toLowerCase();
+        return auditLogs.filter((log: any) => {
+            if (actionFilter !== 'all' && log.action !== actionFilter) return false;
+            if (!term) return true;
+            return [log.user, log.action, log.target]
+                .filter(Boolean)
+                .some((f: string) => f.toLowerCase().includes(term));
+        });
+    }, [auditLogs, searchTerm, actionFilter]);
+
+    const filterActive = actionFilter !== 'all';
+
+    const handleExport = () => {
+        const csv = toCsv(filteredLogs);
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `audit-log-${new Date().toISOString().slice(0, 10)}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+    };
 
     return (
         <div className="space-y-6">
@@ -18,10 +56,46 @@ export function AuditPage() {
                     <p className="text-slate-500 mt-1">Immutable record of all system activities and data changes.</p>
                 </div>
                  <div className="flex items-center gap-3">
-                    <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-50 transition-colors font-medium text-sm shadow-sm">
-                        <Filter size={16} /> Filter
-                    </button>
-                    <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-50 transition-colors font-medium text-sm shadow-sm">
+                    <div className="relative">
+                        <button
+                            onClick={() => setFilterOpen(o => !o)}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors font-medium text-sm shadow-sm border ${
+                                filterActive || filterOpen
+                                    ? 'bg-blue-50 border-blue-300 text-blue-700 ring-2 ring-blue-100'
+                                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                            }`}
+                        >
+                            <Filter size={16} /> Filter{filterActive ? ` (1)` : ''}
+                        </button>
+                        {filterOpen && (
+                            <div className="absolute right-0 mt-2 w-56 bg-white border border-slate-200 rounded-lg shadow-lg z-20 py-1 max-h-72 overflow-y-auto">
+                                <button
+                                    onClick={() => { setActionFilter('all'); setFilterOpen(false); }}
+                                    className="w-full flex items-center justify-between px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                                >
+                                    All actions {actionFilter === 'all' && <Check size={14} className="text-blue-600" />}
+                                </button>
+                                {actionOptions.map(opt => (
+                                    <button
+                                        key={opt}
+                                        onClick={() => { setActionFilter(opt); setFilterOpen(false); }}
+                                        className="w-full flex items-center justify-between px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                                    >
+                                        <span className="truncate">{opt}</span>
+                                        {actionFilter === opt && <Check size={14} className="text-blue-600 shrink-0" />}
+                                    </button>
+                                ))}
+                                {actionOptions.length === 0 && (
+                                    <div className="px-3 py-2 text-xs text-slate-400">No actions to filter</div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                    <button
+                        onClick={handleExport}
+                        disabled={filteredLogs.length === 0}
+                        className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-50 transition-colors font-medium text-sm shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
                         <Shield size={16} /> Export Report
                     </button>
                 </div>
@@ -30,9 +104,9 @@ export function AuditPage() {
             {/* Search */}
              <div className="relative max-w-lg">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                <input 
-                    type="text" 
-                    placeholder="Search by user, client, or action..." 
+                <input
+                    type="text"
+                    placeholder="Search by user, client, or action..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400"
@@ -58,7 +132,17 @@ export function AuditPage() {
                                 </td>
                             </tr>
                         )}
-                        {auditLogs.map((log: any) => (
+                        {!isLoading && filteredLogs.length === 0 && (
+                            <tr>
+                                <td colSpan={5} className="py-12 text-center text-slate-400">
+                                    <History size={40} className="mx-auto mb-3 opacity-40" />
+                                    <p className="font-medium text-slate-600">
+                                        {auditLogs.length === 0 ? 'No audit events recorded yet' : 'No events match your search'}
+                                    </p>
+                                </td>
+                            </tr>
+                        )}
+                        {filteredLogs.map((log: any) => (
                             <tr key={log.id} className="hover:bg-slate-50 transition-colors">
                                 <td className="px-6 py-4 text-sm text-slate-500 font-mono">
                                     {log.timestamp}
@@ -66,7 +150,7 @@ export function AuditPage() {
                                 <td className="px-6 py-4">
                                     <div className="flex items-center gap-2">
                                         <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-600">
-                                            {log.user.charAt(0)}
+                                            {(log.user || '?').charAt(0)}
                                         </div>
                                         <span className="text-sm font-medium text-slate-700">{log.user}</span>
                                     </div>

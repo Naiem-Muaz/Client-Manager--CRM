@@ -8,9 +8,9 @@ export function TopBar() {
         <div className="flex items-center gap-2 text-sm text-slate-500">
             <span className="hover:text-slate-800 cursor-pointer transition-colors">Clients</span>
             <span className="text-slate-300">/</span>
-            <span className="hover:text-slate-800 cursor-pointer transition-colors font-medium text-slate-900">ABC Limited</span>
+            <span className="hover:text-slate-800 cursor-pointer transition-colors font-medium text-slate-900">Client Dashboard</span>
             <span className="text-slate-300">/</span>
-            <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 text-xs font-medium border border-blue-100">2024 CT</span>
+            <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 text-xs font-medium border border-blue-100">MTD ITSA</span>
         </div>
 
         {/* Right: Actions & User */}

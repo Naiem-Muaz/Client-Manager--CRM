@@ -25,7 +25,8 @@ const EVENT_COLORS: Record<AuditEventType, string> = {
 export function ClientAuditTab({ logs }: { logs: AuditLogEntry[] }) {
     const [filter, setFilter] = useState<'All' | AuditEventType>('All');
 
-    const filteredLogs = filter === 'All' ? logs : logs.filter(l => l.type === filter);
+    const safeLogs = Array.isArray(logs) ? logs : [];
+    const filteredLogs = filter === 'All' ? safeLogs : safeLogs.filter(l => l.type === filter);
 
     return (
         <div className="space-y-6">
@@ -81,7 +82,7 @@ export function ClientAuditTab({ logs }: { logs: AuditLogEntry[] }) {
                                                 <div className="flex items-center gap-2 mb-1">
                                                     <span className="font-bold text-slate-900 text-sm">{log.description}</span>
                                                     <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200">
-                                                        {log.type.replace(/_/g, ' ')}
+                                                        {(log.type || 'EVENT').replace(/_/g, ' ')}
                                                     </span>
                                                 </div>
                                                 <div className="text-xs text-slate-500">

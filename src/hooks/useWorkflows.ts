@@ -4,7 +4,7 @@ import { NextGenAPI } from '../api/NextGenAPI';
 const fetcher = (url: string) => NextGenAPI.get(url).then(res => res.data.data || res.data);
 
 export function useWorkflows() {
-  const { data, error, isLoading } = useSWR(`/api/brain/workflows`, fetcher);
+  const { data, error, isLoading } = useSWR(`/brain/workflows`, fetcher);
 
   return {
     items: data?.items || data || [],
@@ -15,7 +15,7 @@ export function useWorkflows() {
 }
 
 export async function updateWorkflowStage(itemId: string, newStage: string) {
-  const response = await NextGenAPI.put(`/api/brain/workflows/${itemId}/stage`, { stage: newStage });
-  mutate(`/api/brain/workflows`);
+  const response = await NextGenAPI.put(`/brain/workflows/${itemId}/stage`, { stage: newStage });
+  mutate(`/brain/workflows`);
   return response.data;
 }

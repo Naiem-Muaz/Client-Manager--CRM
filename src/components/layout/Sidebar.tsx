@@ -1,11 +1,11 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { 
-  LayoutDashboard, 
-  Users, 
+import {
+  LayoutDashboard,
+  Users,
   ShieldAlert,
-  CheckSquare, 
-  Settings, 
+  CheckSquare,
+  Settings,
   ChevronLeft,
   ChevronRight,
   Briefcase,
@@ -13,7 +13,8 @@ import {
   Clock,
   History,
   FileBarChart,
-  CloudUpload
+  CloudUpload,
+  Zap
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -25,6 +26,7 @@ export function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
   const navItems = [
     { icon: LayoutDashboard, label: 'Dashboard', to: '/' },
     { icon: ShieldAlert, label: 'Compliance', to: '/compliance' },
+    { icon: Zap, label: 'MTD', to: '/mtd' },
     { icon: Users, label: 'Clients', to: '/clients' },
     { icon: FileText, label: 'Documents', to: '/documents' },
     { icon: CheckSquare, label: 'Tasks', to: '/tasks' },
