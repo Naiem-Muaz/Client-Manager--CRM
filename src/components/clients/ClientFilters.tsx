@@ -3,7 +3,7 @@ import { Filter, Search, X } from 'lucide-react';
 
 export interface ClientFilterState {
     search: string;
-    entityType: 'all' | 'Company' | 'Individual';
+    entityType: 'all' | 'limited_company' | 'individual' | 'sole_trader' | 'partnership';
     risk: 'all' | 'low' | 'medium' | 'high';
 }
 
@@ -52,8 +52,10 @@ export function ClientFilters({ value, onChange }: Props) {
                     className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 hover:bg-slate-50 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 >
                     <option value="all">All entity types</option>
-                    <option value="Company">Company</option>
-                    <option value="Individual">Individual</option>
+                    <option value="limited_company">Limited Company</option>
+                    <option value="individual">Individual</option>
+                    <option value="sole_trader">Sole Trader</option>
+                    <option value="partnership">Partnership</option>
                 </select>
 
                 {/* Risk Filter */}

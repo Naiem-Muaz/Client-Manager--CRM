@@ -1,7 +1,9 @@
 import React, { useState, useMemo } from 'react';
+import { Layers } from 'lucide-react';
 import { ClientPageActions } from '../components/clients/ClientPageActions';
 import { ClientFilters, ClientFilterState, DEFAULT_CLIENT_FILTERS } from '../components/clients/ClientFilters';
 import { ClientTable } from '../components/clients/ClientTable';
+import { entityKey } from '../lib/entityType';
 
 import { useClients } from '../hooks/useClients';
 import { useHealthScores } from '../hooks/useHealth';
@@ -16,6 +18,8 @@ export function ClientListPage() {
     const { clients: rawData, isError: error, isLoading } = useClients();
     const { scores: healthScores } = useHealthScores();
     const [filters, setFilters] = useState<ClientFilterState>(DEFAULT_CLIENT_FILTERS);
+    const [groupBy, setGroupBy] = useState<boolean>(() => localStorage.getItem('clients_group_by_entity') === '1');
+    const toggleGroup = () => setGroupBy(v => { const n = !v; localStorage.setItem('clients_group_by_entity', n ? '1' : '0'); return n; });
 
     // The API might return { data: [...] } or just [...]
     const clients = Array.isArray(rawData) ? rawData : (rawData as any)?.data || [];
@@ -24,7 +28,8 @@ export function ClientListPage() {
         const term = filters.search.trim().toLowerCase();
         return clients.filter((c: any) => {
             if (term && !(c.legalName || '').toLowerCase().includes(term)) return false;
-            if (filters.entityType !== 'all' && c.entityType !== filters.entityType) return false;
+            // Compare on the normalised entity key (API lowercases values; legacy/IRIS values vary).
+            if (filters.entityType !== 'all' && entityKey(c.entityType) !== filters.entityType) return false;
             if (filters.risk !== 'all' && riskBand(c.riskScore ?? 0) !== filters.risk) return false;
             return true;
         });
@@ -41,8 +46,18 @@ export function ClientListPage() {
                 <ClientPageActions />
             </div>
 
-            {/* Header Row 2: Search, Filters */}
-            <ClientFilters value={filters} onChange={setFilters} />
+            {/* Header Row 2: Search, Filters + group toggle */}
+            <div className="flex items-center gap-3">
+                <div className="flex-1"><ClientFilters value={filters} onChange={setFilters} /></div>
+                <button
+                    onClick={toggleGroup}
+                    className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium border transition-colors whitespace-nowrap ${
+                        groupBy ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                    }`}
+                >
+                    <Layers size={16} /> Group by entity type
+                </button>
+            </div>
 
             {/* Content */}
             {error ? (
@@ -67,7 +82,7 @@ export function ClientListPage() {
                     </button>
                 </div>
             ) : (
-                <ClientTable clients={filteredClients} healthScores={healthScores} />
+                <ClientTable clients={filteredClients} healthScores={healthScores} groupBy={groupBy} />
             )}
         </div>
     );
