@@ -33,6 +33,7 @@ import { ClientHealthScoreCard } from '../components/clients/ClientHealthScoreCa
 import { ClientWIPCard } from '../components/clients/ClientWIPCard';
 import { ActivityFeed } from '../components/clients/ActivityFeed';
 import { ClientAuthority, DEFAULT_AUTHORITY } from '../types/ClientAuthority';
+import { entityKey, ENTITY_META } from '../lib/entityType';
 
 const MOCK_STARTING_AUTHORITY: ClientAuthority = {
     ...DEFAULT_AUTHORITY,
@@ -61,6 +62,12 @@ export function ClientDetailPage() {
   const [hasEngagement, setHasEngagement] = useState(true);
   const [authority, setAuthority] = useState<ClientAuthority>(MOCK_STARTING_AUTHORITY);
 
+  const ek = client ? entityKey(client.entityType) : 'other';
+  const entityMeta = ENTITY_META[ek];
+  const isCompany = ek === 'limited_company';
+  // Guard against the literal string 'undefined' leaking from imports.
+  const crn = client?.companyNumber && client.companyNumber !== 'undefined' ? client.companyNumber : null;
+
   if (clientError) return <div className="p-8 text-red-600">Error loading client.</div>;
   if (!client) return <div className="p-8 space-y-4 animate-pulse">
       <div className="h-32 bg-slate-100 rounded-xl"></div>
@@ -84,27 +91,29 @@ export function ClientDetailPage() {
       {/* Header Card */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-8 mb-8 relative overflow-hidden">
         <div className="absolute top-0 right-0 p-6 opacity-5 pointer-events-none">
-           {client.entityType === 'Company' ? <Building2 size={160} /> : <User size={160} />}
+           {isCompany ? <Building2 size={160} /> : <User size={160} />}
         </div>
-        
+
         <div className="relative z-10 flex justify-between items-start">
             <div className="flex gap-6">
                 <div className={`w-20 h-20 rounded-2xl flex items-center justify-center text-3xl font-bold text-white shadow-lg ${
-                    client.entityType === 'Company' ? 'bg-gradient-to-br from-purple-500 to-indigo-600' : 'bg-gradient-to-br from-blue-500 to-cyan-500'
+                    isCompany ? 'bg-gradient-to-br from-purple-500 to-indigo-600' : 'bg-gradient-to-br from-blue-500 to-cyan-500'
                 }`}>
                     {client.legalName.charAt(0)}
                 </div>
                 <div>
                     <h1 className="text-3xl font-bold text-slate-900">{client.legalName}</h1>
                     <div className="flex items-center gap-4 mt-2 text-slate-500 text-sm">
-                        <span className="flex items-center gap-1.5">
-                            {client.entityType === 'Company' ? <Building2 size={16} /> : <User size={16} />}
-                            {client.entityType}
+                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${entityMeta.badge}`}>
+                            <entityMeta.icon size={13} />
+                            {entityMeta.label}
                         </span>
-                        <span>•</span>
-                        <span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-600">
-                             {client.utr ? `UTR: ${client.utr}` : `CRN: ${client.companyNumber}`}
-                        </span>
+                        {(client.utr || crn) && <>
+                          <span>•</span>
+                          <span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-600">
+                               {client.utr ? `UTR: ${client.utr}` : `CRN: ${crn}`}
+                          </span>
+                        </>}
                          <span>•</span>
                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${true ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
                             Active Client
@@ -150,14 +159,14 @@ export function ClientDetailPage() {
         </div>
       </div>
 
-      {/* Companies House panel (Company-type clients only) */}
-      {client.entityType === 'Company' && (
+      {/* Companies House panel (limited companies — any legacy/canonical entity_type spelling) */}
+      {isCompany && (
         <div className="mb-6">
           <CompaniesHousePanel
             client={{
               id: client.id,
               legalName: client.legalName,
-              companyNumber: client.companyNumber,
+              companyNumber: crn ?? undefined,
               entityType: client.entityType,
               chData: client.chData ?? null,
             }}

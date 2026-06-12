@@ -1,4 +1,5 @@
 import React from 'react';
+import { entityKey, ENTITY_META } from '../../lib/entityType';
 import { User, MapPin, Phone, Mail, Building2, Ticket } from 'lucide-react';
 
 export function ClientProfileSection({ client }: { client: any }) {
@@ -29,7 +30,7 @@ export function ClientProfileSection({ client }: { client: any }) {
                     <span className="text-slate-500 text-xs block">Reference</span>
                     <div className="flex items-center gap-2">
                         <Ticket size={14} className="text-slate-400" />
-                        <span className="font-mono text-slate-700">{client.utr || client.companyNumber || 'N/A'}</span>
+                        <span className="font-mono text-slate-700">{client.utr || (client.companyNumber !== 'undefined' ? client.companyNumber : null) || 'N/A'}</span>
                     </div>
                 </div>
 

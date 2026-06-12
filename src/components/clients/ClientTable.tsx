@@ -113,7 +113,7 @@ export function ClientTable({ clients, healthScores = {}, groupBy = false }: Pro
                         </span>
                         <span className="flex items-center gap-2 text-xs mt-1">
                             <span className={`inline-flex items-center px-1.5 py-0.5 rounded font-medium ${meta.badge}`}>{meta.label}</span>
-                            <span className="text-slate-400">{client.utr || client.companyNumber || 'No Ref'}</span>
+                            <span className="text-slate-400">{client.utr || (client.companyNumber !== 'undefined' ? client.companyNumber : null) || 'No Ref'}</span>
                         </span>
                     </div>
                 </div>

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { entityKey } from '../../lib/entityType';
 import { errMsg } from '../../lib/errMsg';
 import { CalendarClock, Check, Loader2 } from 'lucide-react';
 import { patchClient } from '../../hooks/useClients';
@@ -10,7 +11,7 @@ import { useTeamMembers } from '../../hooks/useTeam';
  * vat_registered, vat_quarter_end) via PATCH /brain/clients/:id.
  */
 export function ClientComplianceDatesCard({ client, onSaved }: { client: any; onSaved?: () => void }) {
-  const isCompany = client.entityType === 'Company';
+  const isCompany = entityKey(client.entityType) === 'limited_company';
   const toDateInput = (v: any) => (v ? String(v).slice(0, 10) : '');
 
   const [incorporationDate, setIncorporationDate] = useState(toDateInput(client.incorporation_date || client.incorporationDate));
