@@ -10,7 +10,7 @@ type State =
   | { phase: 'error' }
   | { phase: 'expired'; firmName?: string }
   | { phase: 'signed'; signerName?: string; signedAt?: string; firmName?: string }
-  | { phase: 'pending'; clientName?: string; firmName?: string; templateName?: string; templateBody?: string };
+  | { phase: 'pending'; clientName?: string; firmName?: string; templateName?: string; templateBody?: string; partnerName?: string };
 
 // Renders the full-HTML letter in an isolated, auto-height iframe (its own <style> can't leak).
 function LetterFrame({ html }: { html: string }) {
@@ -51,7 +51,7 @@ export function SigningPage() {
         if (!body.success || !d) { setState({ phase: 'error' }); return; }
         if (d.status === 'expired') setState({ phase: 'expired', firmName: d.firmName });
         else if (d.status === 'signed') setState({ phase: 'signed', signerName: d.signerName, signedAt: d.signedAt, firmName: d.firmName });
-        else if (d.status === 'sent') { setState({ phase: 'pending', clientName: d.clientName, firmName: d.firmName, templateName: d.templateName, templateBody: d.templateBody }); if (d.clientEmail) setEmail(d.clientEmail); }
+        else if (d.status === 'sent') { setState({ phase: 'pending', clientName: d.clientName, firmName: d.firmName, templateName: d.templateName, templateBody: d.templateBody, partnerName: d.partnerName }); if (d.clientEmail) setEmail(d.clientEmail); }
         else setState({ phase: 'error' });
       } catch { setState({ phase: 'error' }); }
     })();
@@ -97,17 +97,24 @@ export function SigningPage() {
   if (state.phase === 'expired') return <Shell><Card icon={<AlertTriangle className="text-amber-500" size={40} />} title="This link has expired" body={`Please contact ${firm} to request a new engagement letter.`} /></Shell>;
   if (state.phase === 'signed') return <Shell><Card icon={<CheckCircle className="text-emerald-500" size={44} />} title="Already signed" body={`This engagement letter was signed${state.signerName ? ` by ${state.signerName}` : ''}${state.signedAt ? ` on ${fmt(state.signedAt)}` : ''}.`} /></Shell>;
 
-  if (done) return (
-    <Shell>
-      <Card icon={<CheckCircle className="text-emerald-500" size={48} />} title="Document signed successfully"
-        body={`Signed on ${fmt(done.signedAt)} by ${name}. A copy has been recorded with ${firm}.`}>
-        <a href={`${API_ROOT}/sign/${token}/certificate`} target="_blank" rel="noopener noreferrer"
-          className="mt-5 inline-flex items-center gap-2 px-5 py-3 bg-[#1a365d] text-white rounded-lg text-sm font-semibold hover:bg-[#142a4a]" style={{ minHeight: 44 }}>
-          <Download size={18} /> Download your signed copy
-        </a>
-      </Card>
-    </Shell>
-  );
+  if (done) {
+    const partnerName = (state as any).partnerName as string | undefined;
+    return (
+      <Shell>
+        <Card icon={<CheckCircle className="text-emerald-500" size={48} />} title="Document signed successfully"
+          body={`Signed on ${fmt(done.signedAt)} by ${name}.`}>
+          <div className="mt-3 text-sm text-slate-600 leading-relaxed">
+            <div>Signed on behalf of <strong>{firm}</strong></div>
+            {partnerName && <div>Your engagement partner: <strong>{partnerName}</strong></div>}
+          </div>
+          <a href={`${API_ROOT}/sign/${token}/certificate`} target="_blank" rel="noopener noreferrer"
+            className="mt-5 inline-flex items-center gap-2 px-5 py-3 bg-[#1a365d] text-white rounded-lg text-sm font-semibold hover:bg-[#142a4a]" style={{ minHeight: 44 }}>
+            <Download size={18} /> Download your signed copy
+          </a>
+        </Card>
+      </Shell>
+    );
+  }
 
   // pending → letter + signature card
   return (
