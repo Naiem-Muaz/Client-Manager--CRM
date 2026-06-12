@@ -10,7 +10,7 @@ type State =
   | { phase: 'error' }
   | { phase: 'expired'; firmName?: string }
   | { phase: 'signed'; signerName?: string; signedAt?: string; firmName?: string }
-  | { phase: 'pending'; clientName?: string; firmName?: string; templateName?: string; templateBody?: string; partnerName?: string };
+  | { phase: 'pending'; clientName?: string; firmName?: string; firmLogo?: string; templateName?: string; templateBody?: string; partnerName?: string };
 
 // Renders the full-HTML letter in an isolated, auto-height iframe (its own <style> can't leak).
 function LetterFrame({ html }: { html: string }) {
@@ -51,7 +51,7 @@ export function SigningPage() {
         if (!body.success || !d) { setState({ phase: 'error' }); return; }
         if (d.status === 'expired') setState({ phase: 'expired', firmName: d.firmName });
         else if (d.status === 'signed') setState({ phase: 'signed', signerName: d.signerName, signedAt: d.signedAt, firmName: d.firmName });
-        else if (d.status === 'sent') { setState({ phase: 'pending', clientName: d.clientName, firmName: d.firmName, templateName: d.templateName, templateBody: d.templateBody, partnerName: d.partnerName }); if (d.clientEmail) setEmail(d.clientEmail); }
+        else if (d.status === 'sent') { setState({ phase: 'pending', clientName: d.clientName, firmName: d.firmName, firmLogo: d.firmLogo, templateName: d.templateName, templateBody: d.templateBody, partnerName: d.partnerName }); if (d.clientEmail) setEmail(d.clientEmail); }
         else setState({ phase: 'error' });
       } catch { setState({ phase: 'error' }); }
     })();
@@ -75,13 +75,18 @@ export function SigningPage() {
   };
 
   const firm = (state as any).firmName || 'Tax Digital Accountants';
+  const logo = (state as any).firmLogo as string | undefined;
 
-  // Header bar shown on every screen.
+  // Header bar shown on every screen — logo if available, firm name text otherwise.
   const Header = () => (
     <div style={{ borderTop: '4px solid #1a365d' }} className="bg-white border-b border-slate-200">
-      <div className="max-w-2xl mx-auto px-5 py-4">
-        <div className="text-sm font-bold text-[#1a365d]">{firm}</div>
-        <div className="text-xs text-slate-400">Engagement Letter</div>
+      <div className="max-w-2xl mx-auto px-5 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          {logo
+            ? <img src={logo} alt={firm} style={{ maxHeight: 40, width: 'auto' }} />
+            : <div className="text-sm font-bold text-[#1a365d]">{firm}</div>}
+          <div className="text-xs text-slate-400">Engagement Letter</div>
+        </div>
       </div>
     </div>
   );

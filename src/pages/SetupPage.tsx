@@ -1,17 +1,20 @@
 import React, { useState } from 'react';
-import { 
-    Users, 
-    Shield, 
-    Zap, 
+import {
+    Users,
+    Shield,
+    Zap,
     AlertTriangle,
+    Building2,
     Save
 } from 'lucide-react';
 import { UsersTab, HMRCTab, WorkflowTab, RiskTab } from '../components/settings/SettingsTabs';
+import { FirmSettingsTab } from '../components/settings/FirmSettingsTab';
 
 export function SetupPage() {
     const [activeTab, setActiveTab] = useState('users');
 
     const tabs = [
+        { id: 'firm', label: 'Firm Settings', icon: Building2 },
         { id: 'users', label: 'Users & Roles', icon: Users },
         { id: 'hmrc', label: 'HMRC Setup', icon: Shield },
         { id: 'workflow', label: 'Workflow Rules', icon: Zap },
@@ -52,6 +55,7 @@ export function SetupPage() {
 
             {/* Content Area */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 min-h-[500px]">
+                {activeTab === 'firm' && <FirmSettingsTab />}
                 {activeTab === 'users' && <UsersTab />}
                 {activeTab === 'hmrc' && <HMRCTab />}
                 {activeTab === 'workflow' && <WorkflowTab />}
