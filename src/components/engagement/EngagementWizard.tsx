@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, FileText, Check, ChevronRight, ChevronLeft, Send, Loader2 } from 'lucide-react';
 import { useEngagementTemplates, generateEngagement, sendEngagement, Engagement } from '../../hooks/useEngagement';
+import { LetterFrame } from '../clients/ClientEngagementTab';
 import { errMsg } from '../../lib/errMsg';
 
 export function EngagementWizard({ clientId, onClose, onDone }: { clientId: string; onClose: () => void; onDone: () => void }) {
@@ -67,7 +68,7 @@ export function EngagementWizard({ clientId, onClose, onDone }: { clientId: stri
           {step === 2 && draft && (
             <div>
               <p className="text-xs text-slate-400 mb-3">Review the merged letter. Merge fields have been populated from the client record.</p>
-              <div className="bg-white border border-slate-200 rounded-xl p-8 prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: draft.templateBody || '' }} />
+              <LetterFrame html={draft.templateBody || ''} />
             </div>
           )}
 

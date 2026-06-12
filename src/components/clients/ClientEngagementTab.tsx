@@ -1,7 +1,24 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { FileSignature, Plus, CheckCircle, Clock, AlertCircle, Download, ArrowLeft, Loader2 } from 'lucide-react';
 import { EngagementWizard } from '../engagement/EngagementWizard';
 import { useEngagementLetters, fetchCertificateUrl, Engagement } from '../../hooks/useEngagement';
+
+// UK long-form date, e.g. "11 July 2026".
+const fmtDate = (d: string | null | undefined) =>
+  d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+
+// Renders the full-HTML letter in an isolated, auto-height iframe (its <style> can't leak).
+export function LetterFrame({ html }: { html: string }) {
+  const ref = useRef<HTMLIFrameElement>(null);
+  const resize = () => {
+    const f = ref.current;
+    try { if (f?.contentWindow?.document?.body) f.style.height = f.contentWindow.document.body.scrollHeight + 24 + 'px'; } catch { /* noop */ }
+  };
+  return (
+    <iframe ref={ref} srcDoc={html} title="Engagement letter" onLoad={resize} sandbox="allow-same-origin"
+      style={{ width: '100%', border: '1px solid #e2e8f0', borderRadius: 12, minHeight: 400, display: 'block', background: '#fff' }} />
+  );
+}
 
 const STATUS: Record<string, { label: string; cls: string; icon: any }> = {
   draft: { label: 'Draft', cls: 'bg-slate-100 text-slate-600', icon: FileSignature },
@@ -40,7 +57,7 @@ export function ClientEngagementTab({ clientId }: { clientId: string }) {
 
         {selected.status === 'signed' && (
           <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 text-sm text-emerald-800 flex items-center justify-between">
-            <span>Signed by <strong>{selected.signerName}</strong> on {selected.signedAt ? new Date(selected.signedAt).toLocaleString('en-GB') : ''}</span>
+            <span>Signed by <strong>{selected.signerName}</strong> on {fmtDate(selected.signedAt)}</span>
             <button onClick={() => download(selected)} disabled={downloading} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-medium hover:bg-emerald-700 disabled:opacity-50">
               {downloading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} Certificate
             </button>
@@ -48,11 +65,11 @@ export function ClientEngagementTab({ clientId }: { clientId: string }) {
         )}
         {selected.status === 'sent' && selected.signingTokenExpiresAt && (
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
-            Sent for signature — link expires {new Date(selected.signingTokenExpiresAt).toLocaleDateString('en-GB')}.
+            Sent for signature — link expires {fmtDate(selected.signingTokenExpiresAt)}.
           </div>
         )}
 
-        <div className="bg-white border border-slate-200 rounded-xl p-8 prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: selected.templateBody || '' }} />
+        <LetterFrame html={selected.templateBody || ''} />
       </div>
     );
   }
