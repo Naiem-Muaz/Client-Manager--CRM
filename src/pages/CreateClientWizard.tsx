@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  User, Building2, Users, Shield, Heart, ArrowLeft, ArrowRight, Check, AlertCircle,
+  User, Building2, Users, ArrowLeft, ArrowRight, Check, AlertCircle,
   Search, Loader2, Pencil, X, FileText, Calculator, Receipt, BookOpen, Banknote,
   ClipboardList, Briefcase, Landmark,
 } from 'lucide-react';
@@ -240,7 +240,10 @@ export function CreateClientWizard() {
         email: d.email, companyNumber: d.companyNumber || undefined, crn: d.companyNumber || undefined,
         taxReference: d.utr || undefined,
       });
-      const newId = created?.data?.id || created?.id;
+      // The create endpoint returns { success, data: { client_id, tax_year_id } }.
+      // Read client_id first (with fallbacks) — reading data.id returned undefined
+      // and threw "Client created but no id was returned" even though it saved.
+      const newId = created?.data?.client_id || created?.data?.id || created?.id;
       if (!newId) throw new Error('Client created but no id was returned');
 
       // Persist the full canonical field set.
