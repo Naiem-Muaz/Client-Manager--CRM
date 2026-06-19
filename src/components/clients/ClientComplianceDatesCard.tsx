@@ -18,6 +18,11 @@ export function ClientComplianceDatesCard({ client, onSaved }: { client: any; on
   const [accountingPeriodEnd, setAccountingPeriodEnd] = useState(toDateInput(client.accounting_period_end));
   const [vatRegistered, setVatRegistered] = useState(!!client.vat_registered);
   const [vatQuarterEnd, setVatQuarterEnd] = useState(toDateInput(client.vat_quarter_end));
+  const [vatStagger, setVatStagger] = useState<string>(client.vat_stagger || '');
+  const [vatScheme, setVatScheme] = useState<string>(client.vat_scheme || '');
+  const [isEmployer, setIsEmployer] = useState(!!client.is_employer);
+  const [payeReference, setPayeReference] = useState<string>(client.paye_reference || '');
+  const [payrollFrequency, setPayrollFrequency] = useState<string>(client.payroll_frequency || '');
   const [assignedStaffId, setAssignedStaffId] = useState<string>(client.assigned_staff_id || '');
   const { members } = useTeamMembers();
   const [saving, setSaving] = useState(false);
@@ -32,6 +37,11 @@ export function ClientComplianceDatesCard({ client, onSaved }: { client: any; on
         accounting_period_end: isCompany ? (accountingPeriodEnd || null) : undefined,
         vat_registered: vatRegistered,
         vat_quarter_end: vatRegistered ? (vatQuarterEnd || null) : null,
+        vat_stagger: vatRegistered ? (vatStagger || null) : null,
+        vat_scheme: vatRegistered ? (vatScheme || null) : null,
+        is_employer: isEmployer,
+        paye_reference: isEmployer ? (payeReference || null) : null,
+        payroll_frequency: isEmployer ? (payrollFrequency || null) : null,
         assigned_staff_id: assignedStaffId || null,
       });
       setSaved(true);
@@ -74,10 +84,57 @@ export function ClientComplianceDatesCard({ client, onSaved }: { client: any; on
         </div>
 
         {vatRegistered && (
-          <div className="space-y-1">
-            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">VAT quarter end</label>
-            <input type="date" value={vatQuarterEnd} onChange={e => setVatQuarterEnd(e.target.value)} className={inputCls} />
-          </div>
+          <>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">VAT quarter end</label>
+              <input type="date" value={vatQuarterEnd} onChange={e => setVatQuarterEnd(e.target.value)} className={inputCls} />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">VAT stagger</label>
+              <select value={vatStagger} onChange={e => setVatStagger(e.target.value)} className={inputCls}>
+                <option value="">— set quarter group —</option>
+                <option value="group_1">Group 1 (Mar/Jun/Sep/Dec)</option>
+                <option value="group_2">Group 2 (Apr/Jul/Oct/Jan)</option>
+                <option value="group_3">Group 3 (May/Aug/Nov/Feb)</option>
+                <option value="monthly">Monthly</option>
+                <option value="annual">Annual scheme</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">VAT scheme</label>
+              <select value={vatScheme} onChange={e => setVatScheme(e.target.value)} className={inputCls}>
+                <option value="">— select —</option>
+                <option value="standard">Standard</option>
+                <option value="annual">Annual accounting</option>
+                <option value="flat_rate">Flat rate</option>
+              </select>
+            </div>
+          </>
+        )}
+
+        {/* Employer / payroll */}
+        <div className="space-y-1 flex items-center pt-5">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={isEmployer} onChange={e => setIsEmployer(e.target.checked)} className="w-4 h-4 text-blue-600 rounded" />
+            <span className="text-sm font-medium text-slate-700">Employer (operates PAYE)</span>
+          </label>
+        </div>
+        {isEmployer && (
+          <>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">PAYE reference</label>
+              <input value={payeReference} onChange={e => setPayeReference(e.target.value)} placeholder="123/AB456" className={inputCls} />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Payroll frequency</label>
+              <select value={payrollFrequency} onChange={e => setPayrollFrequency(e.target.value)} className={inputCls}>
+                <option value="">— select —</option>
+                <option value="monthly">Monthly</option>
+                <option value="weekly">Weekly</option>
+                <option value="quarterly">Quarterly</option>
+              </select>
+            </div>
+          </>
         )}
 
         <div className="space-y-1">

@@ -26,6 +26,8 @@ import { ClientReviewTab } from '../components/clients/ClientReviewTab';
 import { ClientTransactionsTab } from '../components/clients/ClientTransactionsTab';
 import { ClientSnapshotsTab } from '../components/clients/ClientSnapshotsTab';
 import { ClientHmrcTab } from '../components/clients/ClientHmrcTab';
+import { ClientDeadlinesTab } from '../components/clients/ClientDeadlinesTab';
+import { ClientUpcomingDeadlinesCard } from '../components/clients/ClientUpcomingDeadlinesCard';
 import { ComplianceSimulator } from '../components/dev/ComplianceSimulator';
 import { CompaniesHousePanel } from '../components/clients/CompaniesHousePanel';
 import { ClientComplianceDatesCard } from '../components/clients/ClientComplianceDatesCard';
@@ -177,7 +179,7 @@ export function ClientDetailPage() {
       {/* Tabs */}
       <div className="border-b border-slate-200 mb-8 overflow-x-auto">
         <div className="flex gap-8 whitespace-nowrap">
-            {['overview', 'activity', 'transactions', 'snapshots', 'accounting', 'tax', 'hmrc', 'documents', 'engagement'].map(tab => (
+            {['overview', 'activity', 'transactions', 'snapshots', 'accounting', 'tax', 'hmrc', 'documents', 'engagement', 'deadlines'].map(tab => (
                 <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
@@ -208,7 +210,7 @@ export function ClientDetailPage() {
 
               {/* Column 3: Alerts */}
               <div className="h-full border-l border-slate-200 pl-8 border-dashed lg:block hidden space-y-8">
-                   <ClientAlertsColumn />
+                   <ClientAlertsColumn clientId={client.id} onNavigate={setActiveTab} />
               </div>
 
                {/* Mobile Fallback (Stacking) */}
@@ -217,7 +219,7 @@ export function ClientDetailPage() {
                        <ClientActiveWorkColumn clientId={client.id} />
                     </div>
                     <div className="pt-8 border-t border-slate-200">
-                       <ClientAlertsColumn />
+                       <ClientAlertsColumn clientId={client.id} onNavigate={setActiveTab} />
                     </div>
                </div>
           </div>
@@ -226,6 +228,7 @@ export function ClientDetailPage() {
             <ClientHealthScoreCard clientId={client.id} />
             <ClientWIPCard clientId={client.id} />
           </div>
+          <ClientUpcomingDeadlinesCard clientId={client.id} onViewAll={() => setActiveTab('deadlines')} />
           <ClientComplianceDatesCard client={client} />
         </div>
       )}
@@ -237,6 +240,7 @@ export function ClientDetailPage() {
       {activeTab === 'hmrc' && <ClientHmrcTab clientId={client.id} />}
       {activeTab === 'documents' && <ClientDocumentsTab client={client} />}
       {activeTab === 'engagement' && <ClientEngagementTab clientId={client.id} />}
+      {activeTab === 'deadlines' && <ClientDeadlinesTab clientId={client.id} onNavigate={setActiveTab} />}
       {activeTab === 'activity' && <ActivityFeed clientId={client.id} />}
       
       <ComplianceSimulator 

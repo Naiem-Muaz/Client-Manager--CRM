@@ -1,423 +1,326 @@
-import React, { useState, useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Calendar, ChevronLeft, ChevronRight, AlertTriangle, Clock, CheckCircle,
-  Plus, X, Zap, Loader2, RefreshCw, ExternalLink, Check,
+  AlertTriangle, CalendarClock, ChevronDown, ChevronRight, List as ListIcon,
+  CalendarDays, Loader2, ArrowRight, Building2, Landmark,
 } from 'lucide-react';
-import { useDeadlines, createDeadline, updateDeadline, Deadline } from '../hooks/useDeadlines';
-import { useClients } from '../hooks/useClients';
+import { usePracticeDeadlines, useCoverageRollup, PracticeFilters, CoverageRollup } from '../hooks/useDeadlineEngine';
+import { useTeamMembers } from '../hooks/useTeam';
+import {
+  Deadline, formatDateOnly, daysPill, STATUS_LABELS, STATUS_ORDER, DeadlineStatus,
+  AUTHORITY_LABELS, AUTHORITY_ORDER, Authority, weekStartISO, reasonMeta,
+} from '../lib/deadlines';
 
-const DEADLINE_TYPES = [
-  'Self Assessment Return', 'Payment on Account 1', 'Payment on Account 2',
-  'CT600 Filing', 'Corporation Tax Payment', 'Companies House Accounts',
-  'Confirmation Statement', 'VAT Return', 'PAYE', 'Other',
-];
-
-const monthParam = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-const monthLabel = (d: Date) => d.toLocaleString('default', { month: 'long', year: 'numeric' });
-
-// red = overdue or ≤7d, amber = 8–30d, green = >30d
-function riskClasses(d: Deadline): { bar: string; chip: string; text: string } {
-  if (d.status === 'completed') return { bar: 'bg-slate-300', chip: 'bg-slate-100 text-slate-500', text: 'text-slate-400' };
-  if (d.status === 'overdue' || d.daysUntil <= 7) return { bar: 'bg-red-500', chip: 'bg-red-100 text-red-700', text: 'text-red-600' };
-  if (d.daysUntil <= 30) return { bar: 'bg-amber-500', chip: 'bg-amber-100 text-amber-700', text: 'text-amber-600' };
-  return { bar: 'bg-emerald-500', chip: 'bg-emerald-100 text-emerald-700', text: 'text-emerald-600' };
-}
-
-function daysLabel(d: Deadline): string {
-  if (d.status === 'completed') return 'Completed';
-  if (d.daysUntil < 0) return `${Math.abs(d.daysUntil)}d overdue`;
-  if (d.daysUntil === 0) return 'Due today';
-  return `${d.daysUntil}d left`;
-}
+type GroupBy = 'week' | 'assignee' | 'client';
+type ViewMode = 'list' | 'calendar';
 
 export function DeadlinesPage() {
-  const [monthDate, setMonthDate] = useState(() => { const d = new Date(); d.setDate(1); return d; });
-  const { deadlines, isLoading, isError, mutate } = useDeadlines(monthParam(monthDate));
-  const [selected, setSelected] = useState<Deadline | null>(null);
-  const [showAdd, setShowAdd] = useState(false);
-  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+  const [authority, setAuthority] = useState<string>('');
+  const [statuses, setStatuses] = useState<DeadlineStatus[]>([]);
+  const [assignee, setAssignee] = useState<string>('');
+  const [overdueOnly, setOverdueOnly] = useState(false);
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [groupBy, setGroupBy] = useState<GroupBy>('week');   // default Week (capacity view)
+  const [view, setView] = useState<ViewMode>('list');        // default List (denser)
 
-  const showToast = (msg: string, type: 'success' | 'error') => {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 3000);
+  const filters: PracticeFilters = {
+    authority: authority || undefined,
+    status: statuses,
+    assignee: assignee || undefined,
+    overdue: overdueOnly,
+    from: from || undefined,
+    to: to || undefined,
+    pageSize: 500,
   };
+  const { rows, total, isLoading, isError } = usePracticeDeadlines(filters);
+  const { rollup } = useCoverageRollup();
+  const { members } = useTeamMembers();
 
-  // Items shown in the timeline = those due in the selected month.
-  const monthItems = useMemo(
-    () => deadlines.filter(d => d.dueDate.startsWith(monthParam(monthDate))).sort((a, b) => a.dueDate.localeCompare(b.dueDate)),
-    [deadlines, monthDate]
-  );
-
-  // Firm-wide summary from the same response.
-  const summary = useMemo(() => ({
-    overdue: deadlines.filter(d => d.status === 'overdue').length,
-    thisWeek: deadlines.filter(d => d.status !== 'completed' && d.daysUntil >= 0 && d.daysUntil <= 7).length,
-    thisMonth: monthItems.filter(d => d.status !== 'completed').length,
-  }), [deadlines, monthItems]);
-
-  const handleComplete = async (d: Deadline) => {
-    const prev = deadlines;
-    mutate(deadlines.map(x => x.id === d.id ? { ...x, status: 'completed' as const } : x), { revalidate: false });
-    setSelected(s => s ? { ...s, status: 'completed' } : s);
-    try {
-      await updateDeadline(d.id, { status: 'completed' });
-      showToast('Deadline marked complete', 'success');
-      mutate();
-    } catch {
-      mutate(prev, { revalidate: false });
-      showToast('Could not update deadline', 'error');
-    }
-  };
-
-  const handleSaveNotes = async (d: Deadline, notes: string) => {
-    try {
-      await updateDeadline(d.id, { notes });
-      showToast('Notes saved', 'success');
-      mutate();
-    } catch {
-      showToast('Could not save notes', 'error');
-    }
-  };
+  const groups = useMemo(() => groupRows(rows, groupBy), [rows, groupBy]);
+  const clearFilters = () => { setAuthority(''); setStatuses([]); setAssignee(''); setOverdueOnly(false); setFrom(''); setTo(''); };
+  const hasFilters = authority || statuses.length || assignee || overdueOnly || from || to;
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <div className="p-8 max-w-7xl mx-auto space-y-8">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Compliance Timeline</h1>
-          <p className="text-slate-500 mt-1">Track upcoming HMRC obligations and statutory deadlines.</p>
-        </div>
-        <button
-          onClick={() => setShowAdd(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-sm text-sm"
-        >
-          <Plus size={16} /> Add deadline
-        </button>
+        <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+          <CalendarClock className="text-blue-600" /> Deadlines
+        </h1>
+        <span className="text-sm text-slate-500">{total} deadline{total === 1 ? '' : 's'}</span>
       </div>
 
-      {/* Summary strip */}
-      <div className="grid grid-cols-3 gap-4">
-        <SummaryPill label="Overdue" value={summary.overdue} cls="border-red-200 bg-red-50 text-red-700" />
-        <SummaryPill label="Due this week" value={summary.thisWeek} cls="border-amber-200 bg-amber-50 text-amber-700" />
-        <SummaryPill label={`Due in ${monthDate.toLocaleString('default', { month: 'short' })}`} value={summary.thisMonth} cls="border-slate-200 bg-white text-slate-700" />
-      </div>
+      {/* Region 1 — Needs attention (always present) */}
+      <NeedsAttention rollup={rollup} />
 
-      {/* Month nav */}
+      {/* Region 2 — the work */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
-        <div className="flex items-center justify-between p-4 border-b border-slate-100">
-          <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-            <Calendar size={20} className="text-blue-500" />
-            {monthLabel(monthDate)}
-          </h2>
-          <div className="flex items-center gap-1">
-            <button onClick={() => setMonthDate(m => { const n = new Date(m); n.setMonth(n.getMonth() - 1); return n; })}
-              aria-label="Previous month" className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-800 transition-colors">
-              <ChevronLeft size={16} />
-            </button>
-            <button onClick={() => setMonthDate(m => { const n = new Date(m); n.setMonth(n.getMonth() + 1); return n; })}
-              aria-label="Next month" className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-800 transition-colors">
-              <ChevronRight size={16} />
-            </button>
-            <button onClick={() => { const d = new Date(); d.setDate(1); setMonthDate(d); }}
-              className="ml-1 text-xs font-medium text-blue-600 hover:text-blue-800 px-2">Today</button>
+        <div className="p-4 border-b border-slate-200 space-y-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <Toggle label="Group" value={groupBy} onChange={(v) => setGroupBy(v as GroupBy)} options={[['week', 'Week'], ['assignee', 'Assignee'], ['client', 'Client']]} />
+            <div className="ml-auto flex items-center gap-1 bg-slate-100 rounded-lg p-1">
+              <button onClick={() => setView('list')} className={`px-3 py-1 rounded-md text-sm font-medium flex items-center gap-1 ${view === 'list' ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`}><ListIcon size={14} /> List</button>
+              <button onClick={() => setView('calendar')} className={`px-3 py-1 rounded-md text-sm font-medium flex items-center gap-1 ${view === 'calendar' ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`}><CalendarDays size={14} /> Calendar</button>
+            </div>
+          </div>
+
+          {/* Filters */}
+          <div className="flex flex-wrap items-center gap-2">
+            <select value={authority} onChange={(e) => setAuthority(e.target.value)} className={selCls}>
+              <option value="">All authorities</option>
+              {AUTHORITY_ORDER.map((a) => <option key={a} value={a}>{AUTHORITY_LABELS[a]}</option>)}
+            </select>
+            <select value={assignee} onChange={(e) => setAssignee(e.target.value)} className={selCls}>
+              <option value="">All assignees</option>
+              {members.map((m: any) => <option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={selCls} title="From" />
+            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={selCls} title="To" />
+            <label className="flex items-center gap-1.5 text-sm text-slate-600 px-2">
+              <input type="checkbox" checked={overdueOnly} onChange={(e) => setOverdueOnly(e.target.checked)} className="w-4 h-4 text-red-600 rounded" /> Overdue only
+            </label>
+            {hasFilters && <button onClick={clearFilters} className="text-sm text-blue-600 hover:underline">Clear</button>}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {STATUS_ORDER.map((s) => {
+              const on = statuses.includes(s);
+              return (
+                <button
+                  key={s}
+                  onClick={() => setStatuses((prev) => on ? prev.filter((x) => x !== s) : [...prev, s])}
+                  className={`px-2 py-0.5 rounded-full text-xs font-medium border ${on ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'}`}
+                >{STATUS_LABELS[s]}</button>
+              );
+            })}
           </div>
         </div>
 
-        {/* Body */}
-        <div className="p-4">
-          {isError ? (
-            <div className="py-16 text-center">
-              <AlertTriangle size={36} className="mx-auto text-red-400 mb-3" />
-              <p className="font-medium text-slate-700 mb-3">Could not load deadlines</p>
-              <button onClick={() => mutate()} className="inline-flex items-center gap-2 px-4 py-2 bg-slate-800 text-white text-sm font-medium rounded-lg hover:bg-slate-700">
-                <RefreshCw size={14} /> Retry
-              </button>
-            </div>
-          ) : isLoading ? (
-            <div className="space-y-3">
-              {[1, 2, 3, 4, 5].map(i => <div key={i} className="h-16 bg-slate-100 rounded-lg animate-pulse" />)}
-            </div>
-          ) : monthItems.length === 0 ? (
-            <div className="py-16 text-center">
-              <Calendar size={36} className="mx-auto text-slate-300 mb-3" />
-              <p className="font-medium text-slate-700 mb-1">No deadlines in {monthLabel(monthDate)}</p>
-              <p className="text-sm text-slate-400 mb-4">Nothing is due this month.</p>
-              <button onClick={() => setShowAdd(true)} className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">
-                Add deadline
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {monthItems.map(d => {
-                const c = riskClasses(d);
-                return (
-                  <button
-                    key={d.id}
-                    onClick={() => setSelected(d)}
-                    className="w-full text-left flex items-center gap-4 p-3 rounded-lg border border-slate-200 hover:border-blue-300 hover:shadow-sm transition-all relative overflow-hidden"
-                  >
-                    <div className={`absolute left-0 top-0 bottom-0 w-1 ${c.bar}`} />
-                    <div className="w-12 text-center shrink-0 pl-1">
-                      <div className="text-lg font-bold text-slate-900">{new Date(d.dueDate).getUTCDate()}</div>
-                      <div className="text-[10px] uppercase text-slate-400">{new Date(d.dueDate).toLocaleString('default', { month: 'short', timeZone: 'UTC' })}</div>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-slate-900 truncate">{d.clientName}</span>
-                        {d.source === 'hmrc_live' && (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-700 border border-indigo-200 shrink-0">
-                            <Zap size={10} /> Live from HMRC
-                          </span>
-                        )}
-                        {d.status === 'completed' && <Check size={14} className="text-emerald-500 shrink-0" />}
-                      </div>
-                      <div className="text-sm text-slate-500 truncate">{d.deadlineType}{d.taxYear ? ` · ${d.taxYear}` : ''}</div>
-                    </div>
-                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full shrink-0 ${c.chip}`}>{daysLabel(d)}</span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {selected && (
-        <DeadlineDrawer
-          deadline={selected}
-          onClose={() => setSelected(null)}
-          onComplete={handleComplete}
-          onSaveNotes={handleSaveNotes}
-        />
-      )}
-
-      {showAdd && (
-        <AddDeadlineModal
-          onClose={() => setShowAdd(false)}
-          onCreated={() => { setShowAdd(false); mutate(); showToast('Deadline added', 'success'); }}
-        />
-      )}
-
-      {toast && (
-        <div className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-lg shadow-lg text-sm font-medium text-white flex items-center gap-2 ${toast.type === 'success' ? 'bg-emerald-600' : 'bg-red-600'}`}>
-          {toast.type === 'success' ? <CheckCircle size={16} /> : <AlertTriangle size={16} />}
-          {toast.msg}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function SummaryPill({ label, value, cls }: { label: string; value: number; cls: string }) {
-  return (
-    <div className={`p-4 rounded-xl border ${cls}`}>
-      <p className="text-xs font-semibold uppercase tracking-wide opacity-80">{label}</p>
-      <p className="text-3xl font-bold mt-1">{value}</p>
-    </div>
-  );
-}
-
-// ── Drawer ────────────────────────────────────────────────────────────────────
-
-function DeadlineDrawer({ deadline, onClose, onComplete, onSaveNotes }: {
-  deadline: Deadline;
-  onClose: () => void;
-  onComplete: (d: Deadline) => void;
-  onSaveNotes: (d: Deadline, notes: string) => void;
-}) {
-  const [notes, setNotes] = useState(deadline.notes || '');
-  const c = riskClasses(deadline);
-
-  return (
-    <div className="fixed inset-0 z-50 flex justify-end">
-      <div className="absolute inset-0 bg-slate-900/30" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-white h-full shadow-xl flex flex-col animate-fadeIn">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
-          <h3 className="font-bold text-slate-900">Deadline detail</h3>
-          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600"><X size={18} /></button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-6 space-y-5">
-          <div className="flex items-center gap-2">
-            <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${c.chip}`}>{daysLabel(deadline)}</span>
-            {deadline.source === 'hmrc_live' && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-700 border border-indigo-200">
-                <Zap size={10} /> Live from HMRC
-              </span>
-            )}
-            {deadline.source === 'calculated' && <span className="text-[10px] text-slate-400 uppercase font-bold">Calculated</span>}
-            {deadline.source === 'manual' && <span className="text-[10px] text-slate-400 uppercase font-bold">Manual</span>}
-          </div>
-
-          <Field label="Client">
-            {deadline.clientId
-              ? <Link to={`/clients/${deadline.clientId}`} className="text-blue-600 hover:text-blue-800 font-medium inline-flex items-center gap-1">{deadline.clientName} <ExternalLink size={12} /></Link>
-              : <span className="text-slate-700">{deadline.clientName}</span>}
-          </Field>
-          <Field label="Deadline type"><span className="text-slate-700">{deadline.deadlineType}</span></Field>
-          <Field label="Due date"><span className="text-slate-700">{new Date(deadline.dueDate).toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })}</span></Field>
-          <Field label="Days remaining"><span className={`font-semibold ${c.text}`}>{daysLabel(deadline)}</span></Field>
-          <Field label="Assigned staff"><span className="text-slate-700">{deadline.assignedStaff || '—'}</span></Field>
-          {deadline.taxYear && <Field label="Tax year"><span className="text-slate-700">{deadline.taxYear}</span></Field>}
-
-          <div>
-            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1">Notes</label>
-            <textarea
-              value={notes}
-              onChange={e => setNotes(e.target.value)}
-              rows={4}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 resize-none"
-              placeholder="Add a note..."
-            />
-            <button onClick={() => onSaveNotes(deadline, notes)} className="mt-2 text-xs font-medium text-blue-600 hover:text-blue-800">Save notes</button>
-          </div>
-        </div>
-
-        <div className="px-6 py-4 border-t border-slate-200 flex gap-3">
-          {deadline.clientId && (
-            <Link to={`/clients/${deadline.clientId}`} className="flex-1 text-center px-4 py-2 border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 font-medium text-sm">
-              View client
-            </Link>
-          )}
-          {deadline.status !== 'completed' && (
-            <button onClick={() => onComplete(deadline)} className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium text-sm flex items-center justify-center gap-2">
-              <Check size={16} /> Mark complete
-            </button>
-          )}
-        </div>
+        {isLoading ? (
+          <div className="p-12 text-center text-slate-400 animate-pulse">Loading deadlines…</div>
+        ) : isError ? (
+          <div className="p-12 text-center text-red-500">Couldn't load deadlines.</div>
+        ) : rows.length === 0 ? (
+          <div className="p-12 text-center text-slate-400">No deadlines match these filters.</div>
+        ) : view === 'list' ? (
+          <ListView groups={groups} groupBy={groupBy} />
+        ) : (
+          <CalendarView rows={rows} />
+        )}
       </div>
     </div>
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+const selCls = 'border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100';
+
+function Toggle({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: [string, string][] }) {
   return (
-    <div>
-      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-0.5">{label}</p>
-      <div className="text-sm">{children}</div>
+    <div className="flex items-center gap-2">
+      <span className="text-xs font-semibold text-slate-400 uppercase">{label}</span>
+      <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
+        {options.map(([v, lbl]) => (
+          <button key={v} onClick={() => onChange(v)} className={`px-3 py-1 rounded-md text-sm font-medium ${value === v ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`}>{lbl}</button>
+        ))}
+      </div>
     </div>
   );
 }
 
-// ── Add modal ─────────────────────────────────────────────────────────────────
+// ── Region 1: Needs Attention ────────────────────────────────────────────────
+function NeedsAttention({ rollup }: { rollup: CoverageRollup | undefined }) {
+  const [openU, setOpenU] = useState(true);
+  const [openUM, setOpenUM] = useState(false);
+  if (!rollup) return <div className="h-24 bg-slate-100 rounded-xl animate-pulse" />;
 
-function AddDeadlineModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
-  const { clients: rawClients } = useClients();
-  const clients = Array.isArray(rawClients) ? rawClients : (rawClients as any)?.data || [];
-
-  const [query, setQuery] = useState('');
-  const [client, setClient] = useState<{ id: string; name: string } | null>(null);
-  const [deadlineType, setDeadlineType] = useState('');
-  const [dueDate, setDueDate] = useState('');
-  const [assignee, setAssignee] = useState('');
-  const [notes, setNotes] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const matches = useMemo(() => {
-    if (!query.trim() || client) return [];
-    const t = query.toLowerCase();
-    return clients.filter((c: any) => (c.legalName || '').toLowerCase().includes(t)).slice(0, 6);
-  }, [query, clients, client]);
-
-  const canSave = deadlineType && dueDate && !saving;
-
-  const submit = async () => {
-    setSaving(true);
-    setError(null);
-    try {
-      await createDeadline({
-        clientId: client?.id || null,
-        clientName: client?.name || query || undefined,
-        deadlineType,
-        dueDate,
-        assignedStaff: assignee || undefined,
-        notes: notes || undefined,
-      });
-      onCreated();
-    } catch (err: any) {
-      setError(err?.error || err?.message || 'Failed to create deadline');
-      setSaving(false);
+  const { counts, unmonitored, under_monitored } = rollup;
+  const byReason = useMemo(() => {
+    const m = new Map<string, typeof unmonitored>();
+    for (const c of unmonitored) {
+      const code = c.reason_codes[0] ?? 'unknown';
+      if (!m.has(code)) m.set(code, []);
+      m.get(code)!.push(c);
     }
-  };
+    return [...m.entries()].sort((a, b) => b[1].length - a[1].length);
+  }, [unmonitored]);
 
   return (
-    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden">
-        <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-          <h3 className="font-bold text-slate-900">Add deadline</h3>
-          <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full text-slate-400 hover:text-slate-600"><X size={18} /></button>
-        </div>
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="px-5 py-4 border-b border-slate-200 bg-slate-50/50 flex items-center gap-2">
+        <AlertTriangle size={18} className="text-amber-500" />
+        <h3 className="font-bold text-slate-900 text-sm uppercase tracking-tight">Needs attention</h3>
+        <span className="ml-auto text-sm font-semibold text-slate-600">
+          <span className="text-red-600">{counts.unmonitored} unmonitored</span> · <span className="text-amber-600">{counts.under_monitored} under-monitored</span>
+        </span>
+      </div>
 
-        <div className="p-6 space-y-4">
-          {/* Client typeahead */}
-          <div className="relative">
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-1">Client</label>
-            {client ? (
-              <div className="flex items-center justify-between px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg">
-                <span className="text-sm font-medium text-slate-800">{client.name}</span>
-                <button onClick={() => { setClient(null); setQuery(''); }} className="text-xs text-blue-600 hover:underline">Change</button>
-              </div>
-            ) : (
-              <input
-                value={query}
-                onChange={e => setQuery(e.target.value)}
-                placeholder="Search client (optional)..."
-                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-100"
-              />
-            )}
-            {matches.length > 0 && (
-              <div className="absolute z-10 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                {matches.map((c: any) => (
-                  <button key={c.id} onClick={() => { setClient({ id: c.id, name: c.legalName }); setQuery(''); }}
-                    className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-blue-50">
-                    {c.legalName}
-                  </button>
+      {/* Unmonitored */}
+      <Section open={openU} onToggle={() => setOpenU((o) => !o)} title={`Unmonitored (${counts.unmonitored})`} accent="red">
+        {byReason.map(([code, clients]) => {
+          const meta = reasonMeta(code);
+          return (
+            <div key={code} className="px-5 py-3 border-t border-slate-100">
+              <div className="text-xs font-semibold text-slate-500 mb-2">{meta.message} · {clients.length}</div>
+              <div className="flex flex-wrap gap-2">
+                {clients.map((c) => (
+                  <Link key={c.client_id} to={`/clients/${c.client_id}`} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-50 border border-red-200 text-sm text-slate-700 hover:bg-red-100">
+                    {c.client_name} <span className="text-red-600 font-medium">· {meta.action}</span> <ArrowRight size={12} className="text-red-400" />
+                  </Link>
                 ))}
               </div>
+            </div>
+          );
+        })}
+      </Section>
+
+      {/* Under-monitored (kept visible even when empty) */}
+      <Section open={openUM} onToggle={() => setOpenUM((o) => !o)} title={`Under-monitored (${counts.under_monitored})`} accent="amber">
+        {under_monitored.length === 0 ? (
+          <div className="px-5 py-4 border-t border-slate-100 text-sm text-slate-400">None — clients with a flagged duty missing its deadlines will appear here.</div>
+        ) : (
+          <div className="px-5 py-3 border-t border-slate-100 flex flex-wrap gap-2">
+            {under_monitored.map((c) => {
+              const meta = reasonMeta(c.reason_codes[0] ?? '');
+              return (
+                <Link key={c.client_id} to={`/clients/${c.client_id}`} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-200 text-sm text-slate-700 hover:bg-amber-100">
+                  {c.client_name} <span className="text-amber-600 font-medium">· {meta.action}</span> <ArrowRight size={12} className="text-amber-400" />
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </Section>
+    </div>
+  );
+}
+
+function Section({ open, onToggle, title, accent, children }: { open: boolean; onToggle: () => void; title: string; accent: 'red' | 'amber'; children: React.ReactNode }) {
+  return (
+    <div>
+      <button onClick={onToggle} className="w-full px-5 py-3 flex items-center gap-2 hover:bg-slate-50 text-left">
+        {open ? <ChevronDown size={16} className="text-slate-400" /> : <ChevronRight size={16} className="text-slate-400" />}
+        <span className={`text-sm font-bold ${accent === 'red' ? 'text-red-700' : 'text-amber-700'}`}>{title}</span>
+      </button>
+      {open && <div>{children}</div>}
+    </div>
+  );
+}
+
+// ── Region 2: List view ──────────────────────────────────────────────────────
+const AUTH_ICON: Record<string, React.ReactNode> = {
+  companies_house: <Building2 size={13} className="text-indigo-500" />,
+  hmrc: <Landmark size={13} className="text-blue-500" />,
+};
+
+function ListView({ groups, groupBy }: { groups: Group[]; groupBy: GroupBy }) {
+  return (
+    <div className="divide-y divide-slate-200">
+      {groups.map((g) => (
+        <div key={g.key}>
+          <div className="px-5 py-2.5 bg-slate-50/60 flex items-center gap-2 sticky top-0">
+            <span className="font-bold text-slate-700 text-sm">{g.label}</span>
+            <span className="text-xs text-slate-400">· {g.rows.length}</span>
+          </div>
+          <table className="w-full text-left text-sm">
+            <tbody className="divide-y divide-slate-100">
+              {g.rows.map((d) => {
+                const pill = daysPill(d);
+                return (
+                  <tr key={d.id} className={`hover:bg-slate-50 ${d.overdue ? 'bg-red-50/40' : ''}`}>
+                    {groupBy !== 'client' && (
+                      <td className="px-5 py-3 w-1/4">
+                        <Link to={`/clients/${d.client_id}`} className="font-semibold text-slate-900 hover:text-blue-600">{d.client_name ?? '—'}</Link>
+                      </td>
+                    )}
+                    <td className="px-5 py-3">
+                      <span className="inline-flex items-center gap-1.5 text-slate-700">
+                        {AUTH_ICON[d.deadline_type.authority]} {d.deadline_type.name}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3 text-slate-900 font-medium whitespace-nowrap">{formatDateOnly(d.statutory_due_date)}</td>
+                    <td className="px-5 py-3 whitespace-nowrap"><span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${pill.className}`}>{pill.text}</span></td>
+                    <td className="px-5 py-3 text-slate-500 text-xs whitespace-nowrap">{STATUS_LABELS[d.status]}</td>
+                    {groupBy !== 'assignee' && <td className="px-5 py-3 text-slate-500 text-xs whitespace-nowrap">{d.assignee_name ?? '—'}</td>}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Region 2: Calendar view (month grid) ─────────────────────────────────────
+function CalendarView({ rows }: { rows: Deadline[] }) {
+  const [month, setMonth] = useState(() => { const d = new Date(); return { y: d.getUTCFullYear(), m: d.getUTCMonth() }; });
+  const byDate = useMemo(() => {
+    const map = new Map<string, Deadline[]>();
+    for (const d of rows) {
+      if (!map.has(d.statutory_due_date)) map.set(d.statutory_due_date, []);
+      map.get(d.statutory_due_date)!.push(d);
+    }
+    return map;
+  }, [rows]);
+
+  const first = new Date(Date.UTC(month.y, month.m, 1));
+  const startDow = (first.getUTCDay() + 6) % 7; // Monday=0
+  const daysInMonth = new Date(Date.UTC(month.y, month.m + 1, 0)).getUTCDate();
+  const cells: (string | null)[] = [];
+  for (let i = 0; i < startDow; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(`${month.y}-${String(month.m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const label = new Date(Date.UTC(month.y, month.m, 1)).toLocaleString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  const shift = (n: number) => setMonth((c) => { const t = c.m + n; return { y: c.y + Math.floor(t / 12), m: ((t % 12) + 12) % 12 }; });
+
+  return (
+    <div className="p-4">
+      <div className="flex items-center justify-between mb-3">
+        <button onClick={() => shift(-1)} className="px-3 py-1 text-sm text-slate-500 hover:text-slate-800">‹ Prev</button>
+        <span className="font-bold text-slate-900">{label}</span>
+        <button onClick={() => shift(1)} className="px-3 py-1 text-sm text-slate-500 hover:text-slate-800">Next ›</button>
+      </div>
+      <div className="grid grid-cols-7 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden">
+        {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => (
+          <div key={d} className="bg-slate-50 text-center text-xs font-bold text-slate-500 py-1.5">{d}</div>
+        ))}
+        {cells.map((date, i) => (
+          <div key={i} className={`bg-white min-h-[88px] p-1.5 ${date === todayStr ? 'ring-2 ring-inset ring-blue-300' : ''}`}>
+            {date && (
+              <>
+                <div className="text-[11px] text-slate-400 mb-1">{Number(date.slice(8, 10))}</div>
+                <div className="space-y-1">
+                  {(byDate.get(date) ?? []).map((d) => (
+                    <Link key={d.id} to={`/clients/${d.client_id}`} title={`${d.client_name} — ${d.deadline_type.name}`}
+                      className={`block truncate text-[10px] px-1 py-0.5 rounded ${d.overdue ? 'bg-red-100 text-red-700' : 'bg-blue-50 text-blue-700'} hover:opacity-80`}>
+                      {d.client_name}: {d.deadline_type.code}
+                    </Link>
+                  ))}
+                </div>
+              </>
             )}
           </div>
-
-          <div>
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-1">Deadline type</label>
-            <select value={deadlineType} onChange={e => setDeadlineType(e.target.value)}
-              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-100">
-              <option value="">Select type...</option>
-              {DEADLINE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-1">Due date</label>
-              <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)}
-                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-100" />
-            </div>
-            <div>
-              <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-1">Assignee</label>
-              <input value={assignee} onChange={e => setAssignee(e.target.value)} placeholder="Optional"
-                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-100" />
-            </div>
-          </div>
-
-          <div>
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-1">Notes</label>
-            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
-              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 resize-none" placeholder="Optional" />
-          </div>
-
-          {error && <p className="text-sm text-red-600">{error}</p>}
-        </div>
-
-        <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex justify-end gap-3">
-          <button onClick={onClose} className="px-4 py-2 text-slate-600 font-medium hover:bg-white rounded-lg text-sm">Cancel</button>
-          <button onClick={submit} disabled={!canSave}
-            className="px-5 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm flex items-center gap-2">
-            {saving ? <><Loader2 size={14} className="animate-spin" /> Saving…</> : 'Add deadline'}
-          </button>
-        </div>
+        ))}
       </div>
     </div>
   );
+}
+
+// ── grouping ─────────────────────────────────────────────────────────────────
+interface Group { key: string; label: string; rows: Deadline[]; }
+function groupRows(rows: Deadline[], groupBy: GroupBy): Group[] {
+  const map = new Map<string, Group>();
+  for (const d of rows) {
+    let key: string, label: string;
+    if (groupBy === 'week') { key = weekStartISO(d.statutory_due_date); label = `Week of ${formatDateOnly(key)}`; }
+    else if (groupBy === 'assignee') { key = d.assignee_name ?? '~unassigned'; label = d.assignee_name ?? 'Unassigned'; }
+    else { key = d.client_id; label = d.client_name ?? 'Unknown client'; }
+    if (!map.has(key)) map.set(key, { key, label, rows: [] });
+    map.get(key)!.rows.push(d);
+  }
+  const arr = [...map.values()];
+  arr.forEach((g) => g.rows.sort((a, b) => a.statutory_due_date.localeCompare(b.statutory_due_date)));
+  if (groupBy === 'week') arr.sort((a, b) => a.key.localeCompare(b.key));
+  else arr.sort((a, b) => a.label.localeCompare(b.label));
+  return arr;
 }
