@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { createClient, patchClient } from '../hooks/useClients';
 import { useJobTemplates, createJob } from '../hooks/useJobs';
+import { generateClientDeadlines } from '../hooks/useDeadlineEngine';
 import { useTeamMembers } from '../hooks/useTeam';
 import { searchCompanies, lookupCompany } from '../api/companiesHouse';
 import { errMsg } from '../lib/errMsg';
@@ -271,6 +272,11 @@ export function CreateClientWizard() {
       if (et === 'sole-trader' && d.nino) fields.nino = d.nino.toUpperCase().replace(/\s/g, '');
       if (d.vatRegistered) { fields.vat_number = (d.vatNumber || '').replace(/\s/g, '') || null; if (d.vatQuarterEnd) fields.vat_quarter_end = d.vatQuarterEnd; }
       await patchClient(newId, fields).catch(() => {});
+
+      // Generate statutory deadlines now (after the field PATCH, so CRN / VAT /
+      // employer data is set). Without this the Deadlines tab is empty until the
+      // nightly cron runs. Best-effort — never blocks client creation.
+      await generateClientDeadlines(newId).catch(() => {});
 
       // Create jobs from selected service templates.
       const tplToCreate: string[] = [];

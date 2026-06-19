@@ -40,6 +40,16 @@ export function useClientDeadlines(clientId: string | undefined): ClientDeadline
   };
 }
 
+/**
+ * Generate statutory deadlines for a client (derive obligations + generate the
+ * next periods). Call after creating/editing a client so deadlines appear
+ * immediately instead of only on the nightly cron. Idempotent; safe to re-run.
+ */
+export async function generateClientDeadlines(clientId: string, mode: 'initial' | 'rolling' = 'initial') {
+  const res = await NextGenAPI.post(`/clients/${clientId}/deadlines/generate`, { mode });
+  return res.data;
+}
+
 /** PATCH a deadline (status/assignee/notes/internal date). Returns the updated row + meta. */
 export async function patchDeadline(
   id: string,
