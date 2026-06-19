@@ -217,7 +217,19 @@ export function CreateClientWizard() {
     if (!stepValid(4)) { mark('assignedPartnerId'); return; }
     setSubmitting(true); setSubmitError(null);
     const et = d.entityType as EntityType;
-    const entityTypeForApi = isCompanyLike(et) ? (et === 'llp' ? 'LLP' : 'Company') : et === 'sole-trader' ? 'Individual' : et === 'partnership' ? 'Partnership' : et === 'trust' ? 'Trust' : 'Charity';
+    // Canonical snake_case entity_type (matches clients_entity_type_chk + the deadline
+    // engine's seed applies_to). The human label is display-only; the API gets the
+    // canonical value. NOTE: trust/charity aren't modelled by the engine and aren't in
+    // the DB constraint — they'll still be rejected (flagged separately).
+    const ENTITY_TYPE_API: Record<EntityType, string> = {
+      'sole-trader': 'sole_trader',
+      'limited-company': 'limited_company',
+      'partnership': 'partnership',
+      'llp': 'llp',
+      'trust': 'trust',
+      'charity': 'charity',
+    };
+    const entityTypeForApi = ENTITY_TYPE_API[et];
     const legalName = isCompanyLike(et) ? d.legalName : isOrg(et) ? d.orgName : `${d.firstName} ${d.lastName}`.trim();
     try {
       const created = await createClient({
