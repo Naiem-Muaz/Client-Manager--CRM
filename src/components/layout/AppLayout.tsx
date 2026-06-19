@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import { RightPanel } from './RightPanel';
+import { ErrorBoundary } from '../ErrorBoundary';
 import { PanelRightClose, PanelRightOpen } from 'lucide-react';
 
 export function AppLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
+  const location = useLocation();
 
   return (
     <div className="min-h-screen bg-slate-50 flex">
@@ -24,7 +26,12 @@ export function AppLayout() {
         
         <main className="flex-1 p-8 overflow-x-hidden relative">
             <div className="max-w-[1600px] mx-auto">
-                <Outlet />
+                {/* Per-route boundary, keyed by path so it resets on navigation:
+                    a render error in one page shows a contained fallback while the
+                    sidebar/topbar stay intact — no whole-app white-screen. */}
+                <ErrorBoundary key={location.pathname} label="this page">
+                    <Outlet />
+                </ErrorBoundary>
             </div>
 
              {/* Right Panel Toggle (Floating) */}

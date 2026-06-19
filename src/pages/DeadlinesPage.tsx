@@ -130,18 +130,20 @@ function Toggle({ label, value, onChange, options }: { label: string; value: str
 function NeedsAttention({ rollup }: { rollup: CoverageRollup | undefined }) {
   const [openU, setOpenU] = useState(true);
   const [openUM, setOpenUM] = useState(false);
-  if (!rollup) return <div className="h-24 bg-slate-100 rounded-xl animate-pulse" />;
-
-  const { counts, unmonitored, under_monitored } = rollup;
+  // ALL hooks must run unconditionally before any early return (Rules of Hooks).
+  // Reads through optionally-undefined rollup so it's safe pre-load.
   const byReason = useMemo(() => {
-    const m = new Map<string, typeof unmonitored>();
-    for (const c of unmonitored) {
+    const m = new Map<string, CoverageRollup['unmonitored']>();
+    for (const c of rollup?.unmonitored ?? []) {
       const code = c.reason_codes[0] ?? 'unknown';
       if (!m.has(code)) m.set(code, []);
       m.get(code)!.push(c);
     }
     return [...m.entries()].sort((a, b) => b[1].length - a[1].length);
-  }, [unmonitored]);
+  }, [rollup]);
+
+  if (!rollup) return <div className="h-24 bg-slate-100 rounded-xl animate-pulse" />;
+  const { counts, under_monitored } = rollup;
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
