@@ -14,13 +14,14 @@ import { errMsg } from '../lib/errMsg';
 // ── Static config ──────────────────────────────────────────────────────────────
 type EntityType = 'sole-trader' | 'limited-company' | 'partnership' | 'llp' | 'trust' | 'charity';
 
+// Trust & Charity are intentionally omitted: they aren't in the entity_type
+// constraint or the deadline-engine seed yet, so selecting them errors on submit.
+// Re-add once trust/charity deadline support is built (separate future scope).
 const ENTITY_CARDS: { id: EntityType; label: string; icon: any; note: string }[] = [
   { id: 'sole-trader', label: 'Individual / Sole Trader', icon: User, note: 'MTD ITSA may apply if income > £50,000' },
   { id: 'limited-company', label: 'Limited Company', icon: Building2, note: 'Companies House lookup available in next step' },
   { id: 'partnership', label: 'Partnership', icon: Users, note: 'Partnership UTR required in next step' },
   { id: 'llp', label: 'LLP', icon: Briefcase, note: 'Companies House lookup available in next step' },
-  { id: 'trust', label: 'Trust', icon: Shield, note: 'Trust registration number required in next step' },
-  { id: 'charity', label: 'Charity', icon: Heart, note: 'Confirm charity registration number in next step' },
 ];
 
 const SERVICES: { id: string; label: string; icon: any; jobTypes: string[] }[] = [
