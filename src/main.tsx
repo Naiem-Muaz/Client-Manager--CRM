@@ -21,6 +21,7 @@ import { VerticalSlicePage } from "./pages/VerticalSlicePage";
 import { MTDCommandCentre } from "./pages/MTDCommandCentre";
 import { SigningPage } from "./pages/SigningPage";
 import { LoginPage } from "./pages/LoginPage";
+import { AcceptInvitePage } from "./pages/AcceptInvitePage";
 import { AuthProvider, RequireAuth } from "./context/AuthContext";
 
 import "./index.css";
@@ -56,6 +57,7 @@ function App() {
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/accept-invite" element={<AcceptInvitePage />} />
           <Route path="/sign/:token" element={<SigningPage />} />
           <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
             <Route path="/" element={<DashboardPage />} />
