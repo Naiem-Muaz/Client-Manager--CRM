@@ -221,15 +221,27 @@ export function CreateClientWizard() {
     setChResults([]); setChQuery('');
     const info = await lookupCompany(r.company_number);
     const src = info || r;
-    const addr = parseAddr(info?.registered_address || r.address_snippet || '');
-    // Prefer the clean structured postcode — the address string appends `country`
-    // AFTER the postcode, so parseAddr (which reads the last token) misses it.
-    const cleanPostcode = info?.registered_address_parts?.postal_code || undefined;
+    // Map CH's structured address parts 1:1 to the form fields. Postcode lives
+    // SOLELY in its own field (never composed into an address line), which also
+    // avoids the string-parse mismaps (truncated line 1, country → city field).
+    // `country` has no form field, so it's intentionally dropped; `region` (rare)
+    // is folded into line 2 so nothing is lost. Falls back to parseAddr only for
+    // the search-snippet path where no full lookup ran.
+    const p = info?.registered_address_parts;
+    const addr = p ? {
+      addrLine1: p.address_line_1 || '',
+      addrLine2: [p.address_line_2, p.region].filter(Boolean).join(', '),
+      city: p.locality || '',
+      postcode: p.postal_code || '',
+    } : parseAddr(info?.registered_address || r.address_snippet || '');
     set({
       legalName: src.company_name, companyNumber: src.company_number,
       incorporationDate: src.date_of_creation || '', companyStatus: src.company_status || '',
       companyType: (info as any)?.company_type || '', sicCode: (info?.sic_codes || [])[0] || '',
-      ...addr, ...(cleanPostcode ? { postcode: cleanPostcode } : {}),
+      // #1: CH's own computed next period-end (full date). Empty if CH hasn't
+      // computed it yet (brand-new company) — never re-derived from the ARD.
+      accountingPeriodEnd: (info as any)?.accounting_year_end || '',
+      ...addr,
       chData: info || r, chPrefilled: true, chEditable: false,
     });
   };

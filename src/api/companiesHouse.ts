@@ -29,6 +29,9 @@ export interface CompanyInfo {
         country: string | null;
     } | null;
     date_of_creation: string | null;
+    // CH's own computed next accounts period-end (accounts.next_accounts.period_end_on),
+    // a full date. Null when CH hasn't computed it yet (e.g. brand-new company).
+    accounting_year_end?: string | null;
     sic_codes: string[];
 }
 
