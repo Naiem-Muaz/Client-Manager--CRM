@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   User, Building2, Users, ArrowLeft, ArrowRight, Check, AlertCircle,
   Search, Loader2, Pencil, X, FileText, Calculator, Receipt, BookOpen, Banknote,
-  ClipboardList, Briefcase, Landmark,
+  ClipboardList, Briefcase, Landmark, FileSpreadsheet,
 } from 'lucide-react';
 import { createClient, patchClient } from '../hooks/useClients';
 import { useJobTemplates, createJob } from '../hooks/useJobs';
@@ -26,17 +26,26 @@ const ENTITY_CARDS: { id: EntityType; label: string; icon: any; note: string }[]
   { id: 'llp', label: 'LLP', icon: Briefcase, note: 'Companies House lookup available in next step' },
 ];
 
-const SERVICES: { id: string; label: string; icon: any; jobTypes: string[] }[] = [
-  { id: 'self-assessment', label: 'Self Assessment Return', icon: FileText, jobTypes: ['self-assessment'] },
-  { id: 'corporation-tax', label: 'Corporation Tax CT600', icon: Calculator, jobTypes: ['corporation-tax'] },
-  { id: 'vat', label: 'VAT Return', icon: Receipt, jobTypes: ['vat'] },
-  { id: 'mtd-quarterly', label: 'MTD Quarterly Updates', icon: ClipboardList, jobTypes: ['mtd-quarterly'] },
-  { id: 'eops', label: 'End of Period Statement', icon: ClipboardList, jobTypes: ['eops'] },
-  { id: 'final-declaration', label: 'Final Declaration', icon: Check, jobTypes: ['final-declaration'] },
-  { id: 'bookkeeping', label: 'Bookkeeping', icon: BookOpen, jobTypes: ['bookkeeping'] },
-  { id: 'payroll', label: 'Payroll', icon: Banknote, jobTypes: ['payroll'] },
-  { id: 'cis', label: 'CIS Returns', icon: Landmark, jobTypes: [] },
-  { id: 'company-secretarial', label: 'Company Secretarial', icon: Building2, jobTypes: [] },
+// Each service declares the entity types it applies to (`entities`). Step 4
+// filters by the selected entity so only relevant services are shown.
+//   • Annual Accounts / VAT / Bookkeeping / Payroll / CIS → all entities
+//   • Self Assessment (SA100/SA800) → sole trader, partnership, LLP (NOT company)
+//   • Corporation Tax CT600 → limited company only
+//   • Company Secretarial (confirmation statement etc.) → company + LLP
+//   • MTD ITSA trio (quarterly / EOPS / final declaration) → sole trader only
+const ALL_ENTITIES: EntityType[] = ['sole-trader', 'limited-company', 'partnership', 'llp'];
+const SERVICES: { id: string; label: string; icon: any; jobTypes: string[]; entities: EntityType[] }[] = [
+  { id: 'annual-accounts', label: 'Annual Accounts', icon: FileSpreadsheet, jobTypes: [], entities: ALL_ENTITIES },
+  { id: 'self-assessment', label: 'Self Assessment Return', icon: FileText, jobTypes: ['self-assessment'], entities: ['sole-trader', 'partnership', 'llp'] },
+  { id: 'corporation-tax', label: 'Corporation Tax CT600', icon: Calculator, jobTypes: ['corporation-tax'], entities: ['limited-company'] },
+  { id: 'company-secretarial', label: 'Company Secretarial', icon: Building2, jobTypes: [], entities: ['limited-company', 'llp'] },
+  { id: 'vat', label: 'VAT Return', icon: Receipt, jobTypes: ['vat'], entities: ALL_ENTITIES },
+  { id: 'bookkeeping', label: 'Bookkeeping', icon: BookOpen, jobTypes: ['bookkeeping'], entities: ALL_ENTITIES },
+  { id: 'payroll', label: 'Payroll', icon: Banknote, jobTypes: ['payroll'], entities: ALL_ENTITIES },
+  { id: 'cis', label: 'CIS Returns', icon: Landmark, jobTypes: [], entities: ALL_ENTITIES },
+  { id: 'mtd-quarterly', label: 'MTD Quarterly Updates', icon: ClipboardList, jobTypes: ['mtd-quarterly'], entities: ['sole-trader'] },
+  { id: 'eops', label: 'End of Period Statement', icon: ClipboardList, jobTypes: ['eops'], entities: ['sole-trader'] },
+  { id: 'final-declaration', label: 'Final Declaration', icon: Check, jobTypes: ['final-declaration'], entities: ['sole-trader'] },
 ];
 
 const STEP_LABELS = ['Entity type', 'Identity', 'Tax details', 'Services', 'Practice'];
@@ -154,9 +163,14 @@ export function CreateClientWizard() {
 
   // Pre-select services when leaving step 0 / based on entity + VAT
   const applyServiceDefaults = (et: EntityType) => {
+    // Pre-tick the CORE services for each entity. Conditional ones
+    // (VAT / Payroll / Bookkeeping / CIS) are left unticked for the user to add.
     const svc: Record<string, boolean> = {};
-    if (et === 'sole-trader') svc['self-assessment'] = true;
-    if (et === 'limited-company') { svc['corporation-tax'] = true; svc['company-secretarial'] = true; }
+    const tick = (...ids: string[]) => ids.forEach(id => { svc[id] = true; });
+    if (et === 'sole-trader')        tick('annual-accounts', 'self-assessment', 'mtd-quarterly', 'eops', 'final-declaration');
+    else if (et === 'limited-company') tick('annual-accounts', 'corporation-tax', 'company-secretarial');
+    else if (et === 'partnership')   tick('annual-accounts', 'self-assessment'); // SA800 — no MTD trio
+    else if (et === 'llp')           tick('annual-accounts', 'self-assessment', 'company-secretarial');
     set({ services: svc });
   };
 
@@ -596,7 +610,7 @@ function Step4({ servicesResolved, set, d, vatLocked, jobCount }: any) {
     <div className="space-y-5 animate-fadeIn">
       <div><h2 className="text-2xl font-bold text-slate-900">Services engaged</h2><p className="text-slate-500 mt-1">Select what your firm will handle. Job templates are created automatically.</p></div>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        {SERVICES.map(s => {
+        {SERVICES.filter(s => s.entities.includes(d.entityType)).map(s => {
           const on = !!servicesResolved[s.id];
           const locked = s.id === 'vat' && vatLocked;
           return (

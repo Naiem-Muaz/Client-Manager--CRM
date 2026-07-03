@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import { MoreHorizontal, Eye, Archive, User, ChevronUp, ChevronDown, ChevronRight, Pencil, UserPlus, Tag, Download, X } from 'lucide-react';
 import { archiveClient, patchClient } from '../../hooks/useClients';
@@ -13,6 +14,9 @@ export function ClientTable({ clients, healthScores = {}, groupBy = false }: Pro
     const navigate = useNavigate();
     const { members } = useTeamMembers();
     const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+    // Menu is portaled to <body> so it escapes the table's overflow-hidden;
+    // anchored to the button via viewport coords from getBoundingClientRect().
+    const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
     const [archivingId, setArchivingId] = useState<string | null>(null);
     const [healthSort, setHealthSort] = useState<'asc' | 'desc' | null>(null);
     const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -151,17 +155,23 @@ export function ClientTable({ clients, healthScores = {}, groupBy = false }: Pro
             <td className="px-6 py-4 text-right z-30 relative">
                 <div className="relative inline-block">
                     <button
-                        onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === client.id ? null : client.id); }}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (openMenuId === client.id) { setOpenMenuId(null); return; }
+                            const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                            setMenuPos({ top: r.bottom + 4, left: r.right - 176 }); // 176 = w-44
+                            setOpenMenuId(client.id);
+                        }}
                         disabled={archivingId === client.id}
                         aria-label="Client actions"
                         className="p-2 text-slate-400 hover:text-brand-primary hover:bg-bg-main rounded-lg transition-colors relative z-30 disabled:opacity-50"
                     >
                         <MoreHorizontal size={18} />
                     </button>
-                    {openMenuId === client.id && (
+                    {openMenuId === client.id && menuPos && createPortal(
                         <>
-                            <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setOpenMenuId(null); }} />
-                            <div className="absolute right-0 mt-1 w-44 bg-white border border-slate-200 rounded-lg shadow-lg z-50 py-1 text-left">
+                            <div className="fixed inset-0 z-[60]" onClick={(e) => { e.stopPropagation(); setOpenMenuId(null); }} />
+                            <div style={{ position: 'fixed', top: menuPos.top, left: menuPos.left }} className="w-44 bg-white border border-slate-200 rounded-lg shadow-lg z-[61] py-1 text-left">
                                 <button onClick={(e) => { e.stopPropagation(); setOpenMenuId(null); navigate(`/clients/${client.id}`); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
                                     <Eye size={15} className="text-slate-400" /> View
                                 </button>
@@ -172,7 +182,8 @@ export function ClientTable({ clients, healthScores = {}, groupBy = false }: Pro
                                     <Archive size={15} /> Archive
                                 </button>
                             </div>
-                        </>
+                        </>,
+                        document.body
                     )}
                 </div>
             </td>
