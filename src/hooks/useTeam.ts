@@ -45,3 +45,18 @@ export async function updateTeamMember(id: string, updates: Record<string, any>)
   mutate(TEAM_URL);
   return response.data.data || response.data;
 }
+
+// Regenerate the token + re-send the invite email for a pending invite.
+// Returns { emailSent } so the caller can surface an email-send failure.
+export async function resendInvite(id: string) {
+  const response = await NextGenAPI.post(`/brain/team/invite/${id}/resend`);
+  mutate(TEAM_URL);
+  return response.data.data || response.data;
+}
+
+// Soft-cancel a pending invite (status='cancelled'); it drops out of the list.
+export async function cancelInvite(id: string) {
+  const response = await NextGenAPI.post(`/brain/team/invite/${id}/cancel`);
+  mutate(TEAM_URL);
+  return response.data.data || response.data;
+}

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { errMsg } from '../../lib/errMsg';
 import { Shield, Zap, AlertTriangle, Users, Lock, X, Loader2 } from 'lucide-react';
-import { useTeamMembers, inviteTeamMember, updateTeamMember, TeamMember, TEAM_ROLES } from '../../hooks/useTeam';
+import { useTeamMembers, inviteTeamMember, updateTeamMember, resendInvite, cancelInvite, TeamMember, TEAM_ROLES } from '../../hooks/useTeam';
 import { useAutomationRules, toggleAutomationRule } from '../../hooks/useAutomationRules';
 
 const initials = (name: string) =>
@@ -14,6 +14,36 @@ export function UsersTab() {
     const { members, isLoading, mutate } = useTeamMembers();
     const [showInvite, setShowInvite] = useState(false);
     const [editing, setEditing] = useState<TeamMember | null>(null);
+    const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+    const [busyId, setBusyId] = useState<string | null>(null);
+
+    const notify = (msg: string, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 4000); };
+
+    const onResend = async (m: TeamMember) => {
+        setBusyId(m.id);
+        try {
+            const r = await resendInvite(m.id);
+            // Surface an email-send failure — the token was refreshed either way.
+            notify(r?.emailSent === false
+                ? `Invite refreshed, but the email to ${m.email} failed to send — try again.`
+                : `Invite re-sent to ${m.email}.`, r?.emailSent !== false);
+            mutate();
+        } catch (err: any) {
+            notify(errMsg(err, `Couldn't resend the invite to ${m.email}.`), false);
+        } finally { setBusyId(null); }
+    };
+
+    const onCancel = async (m: TeamMember) => {
+        if (!window.confirm(`Cancel the invitation for ${m.email}? The link will stop working.`)) return;
+        setBusyId(m.id);
+        try {
+            await cancelInvite(m.id);
+            notify(`Invitation for ${m.email} cancelled.`);
+            mutate();
+        } catch (err: any) {
+            notify(errMsg(err, `Couldn't cancel the invite for ${m.email}.`), false);
+        } finally { setBusyId(null); }
+    };
 
     const InviteButton = ({ label }: { label: string }) => (
         <button onClick={() => setShowInvite(true)} className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">{label}</button>
@@ -66,7 +96,12 @@ export function UsersTab() {
                                     </td>
                                     <td className="px-6 py-4 text-right">
                                         {m.status === 'pending'
-                                            ? <span className="text-slate-300 text-xs">Invited</span>
+                                            ? <div className="flex items-center justify-end gap-3">
+                                                <button onClick={() => onResend(m)} disabled={busyId === m.id} className="text-blue-600 hover:text-blue-800 font-medium disabled:opacity-40 inline-flex items-center gap-1">
+                                                    {busyId === m.id && <Loader2 size={12} className="animate-spin" />}Resend
+                                                </button>
+                                                <button onClick={() => onCancel(m)} disabled={busyId === m.id} className="text-red-600 hover:text-red-800 font-medium disabled:opacity-40">Cancel</button>
+                                              </div>
                                             : <button onClick={() => setEditing(m)} className="text-blue-600 hover:text-blue-800 font-medium">Edit</button>}
                                     </td>
                                 </tr>
@@ -78,6 +113,12 @@ export function UsersTab() {
 
             {showInvite && <InviteModal onClose={() => setShowInvite(false)} onDone={() => { setShowInvite(false); mutate(); }} />}
             {editing && <EditMemberModal member={editing} onClose={() => setEditing(null)} onDone={() => { setEditing(null); mutate(); }} />}
+
+            {toast && (
+                <div className={`fixed bottom-6 right-6 z-50 max-w-sm px-4 py-3 rounded-lg shadow-lg text-sm font-medium ${toast.ok ? 'bg-slate-900 text-white' : 'bg-red-600 text-white'}`}>
+                    {toast.msg}
+                </div>
+            )}
         </div>
     );
 }
