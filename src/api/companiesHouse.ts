@@ -20,6 +20,14 @@ export interface CompanyInfo {
     company_status: string | null;
     company_type: string | null;
     registered_address: string | null;
+    registered_address_parts?: {
+        address_line_1: string | null;
+        address_line_2: string | null;
+        locality: string | null;
+        region: string | null;
+        postal_code: string | null;
+        country: string | null;
+    } | null;
     date_of_creation: string | null;
     sic_codes: string[];
 }

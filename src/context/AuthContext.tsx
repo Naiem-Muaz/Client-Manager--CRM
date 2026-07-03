@@ -41,8 +41,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             logout();
           } else {
             setUser({
-              id: decoded.id,
-              email: decoded.email,
+              // The JWT carries the uuid as `user_id` (and `sub`), NOT `id`.
+              // Fallback chain: user_id (current shape) → sub → id (future-proof).
+              id: decoded.user_id || decoded.sub || decoded.id,
+              email: decoded.email ?? '',
               role: decoded.role,
               organisation_id: decoded.organisation_id
             });

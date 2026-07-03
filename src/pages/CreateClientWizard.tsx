@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   User, Building2, Users, ArrowLeft, ArrowRight, Check, AlertCircle,
@@ -9,6 +9,7 @@ import { createClient, patchClient } from '../hooks/useClients';
 import { useJobTemplates, createJob } from '../hooks/useJobs';
 import { generateClientDeadlines } from '../hooks/useDeadlineEngine';
 import { useTeamMembers } from '../hooks/useTeam';
+import { useAuth } from '../context/AuthContext';
 import { searchCompanies, lookupCompany } from '../api/companiesHouse';
 import { errMsg } from '../lib/errMsg';
 
@@ -66,6 +67,7 @@ export function CreateClientWizard() {
   const navigate = useNavigate();
   const { templates } = useJobTemplates();
   const { members } = useTeamMembers();
+  const { user } = useAuth();
 
   const [step, setStep] = useState(0);
   const [maxStep, setMaxStep] = useState(0);
@@ -139,7 +141,7 @@ export function CreateClientWizard() {
     if (s === 0) return !!d.entityType;
     if (s === 1 || s === 2) return (stepFields[s] || []).every(f => !errors[f]);
     if (s === 3) return Object.values(d.services).some(Boolean);
-    if (s === 4) return !!d.assignedPartnerId;
+    if (s === 4) return true;  // assigned partner is optional
     return true;
   };
 
@@ -206,11 +208,15 @@ export function CreateClientWizard() {
     const info = await lookupCompany(r.company_number);
     const src = info || r;
     const addr = parseAddr(info?.registered_address || r.address_snippet || '');
+    // Prefer the clean structured postcode — the address string appends `country`
+    // AFTER the postcode, so parseAddr (which reads the last token) misses it.
+    const cleanPostcode = info?.registered_address_parts?.postal_code || undefined;
     set({
       legalName: src.company_name, companyNumber: src.company_number,
       incorporationDate: src.date_of_creation || '', companyStatus: src.company_status || '',
       companyType: (info as any)?.company_type || '', sicCode: (info?.sic_codes || [])[0] || '',
-      ...addr, chData: info || r, chPrefilled: true, chEditable: false,
+      ...addr, ...(cleanPostcode ? { postcode: cleanPostcode } : {}),
+      chData: info || r, chPrefilled: true, chEditable: false,
     });
   };
 
@@ -271,7 +277,16 @@ export function CreateClientWizard() {
       }
       if (et === 'sole-trader' && d.nino) fields.nino = d.nino.toUpperCase().replace(/\s/g, '');
       if (d.vatRegistered) { fields.vat_number = (d.vatNumber || '').replace(/\s/g, '') || null; if (d.vatQuarterEnd) fields.vat_quarter_end = d.vatQuarterEnd; }
-      await patchClient(newId, fields).catch(() => {});
+      // The detail PATCH carries the bulk of the client record (address, UTR,
+      // NINO, VAT, assignments, tags…). Do NOT swallow its failure — a silent
+      // failure means the client saves as a skeleton with no feedback.
+      let detailsSaved = true;
+      try {
+        await patchClient(newId, fields);
+      } catch (e) {
+        detailsSaved = false;
+        console.error('[create-client] detail PATCH failed:', e);
+      }
 
       // Generate statutory deadlines now (after the field PATCH, so CRN / VAT /
       // employer data is set). Without this the Deadlines tab is empty until the
@@ -290,15 +305,32 @@ export function CreateClientWizard() {
       await Promise.all(tplToCreate.map(tid => createJob({ templateId: tid, clientId: newId, assigneeId: d.assignedPartnerId || null })
         .then(() => { jobsCreated++; }).catch(() => {})));
 
-      setToast(`Client created with ${jobsCreated} job${jobsCreated === 1 ? '' : 's'}`);
-      setTimeout(() => navigate(`/clients/${newId}`), 800); // BUG FIX: redirect to the new client, not /mtd
+      setToast(detailsSaved
+        ? `Client created with ${jobsCreated} job${jobsCreated === 1 ? '' : 's'}`
+        : `Client created but some details didn't save — please edit and retry.`);
+      setTimeout(() => navigate(`/clients/${newId}`), detailsSaved ? 800 : 1600); // redirect to the new client
     } catch (err: any) {
       setSubmitError(errMsg(err, 'Failed to create client'));
       setSubmitting(false);
     }
   };
 
-  const partners = members.filter(m => (m.role || '').includes('partner') || m.role === 'super_admin');
+  // Assignable staff = real team members with a valid user_profiles uuid.
+  // Exclude pending invites (their id is an invite id, not a user_profiles id →
+  // would break the assigned_staff_id / assigned_manager_id FK).
+  const staff = members.filter((m: any) => m.id && m.status !== 'pending');
+  // Seed the current logged-in user so self-assignment always works, even before
+  // any teammates exist. user.id is the real uuid (from the AuthContext fix).
+  const partners = user?.id && !staff.some((m: any) => m.id === user.id)
+    ? [{ id: user.id, name: 'You (current user)' }, ...staff]
+    : staff;
+  const managers = staff;
+
+  // Default the assigned partner to the current user once known (if still unset).
+  useEffect(() => {
+    if (user?.id && !d.assignedPartnerId) set({ assignedPartnerId: user.id });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   return (
     <div className="max-w-4xl mx-auto py-8 px-4">
@@ -331,7 +363,7 @@ export function CreateClientWizard() {
           chQuery={chQuery} chResults={chResults} chSearching={chSearching} onChSearch={onChSearch} selectCompany={selectCompany} />}
         {step === 2 && <Step3 d={d} set={set} errors={errors} touched={touched} mark={mark} incomeBandMeta={incomeBandMeta} />}
         {step === 3 && <Step4 servicesResolved={servicesResolved} set={set} d={d} vatLocked={vatLocked} jobCount={jobCount} />}
-        {step === 4 && <Step5 d={d} set={set} partners={partners} members={members} touched={touched} mark={mark} error={submitError} />}
+        {step === 4 && <Step5 d={d} set={set} partners={partners} managers={managers} touched={touched} mark={mark} error={submitError} />}
       </div>
 
       {/* Nav */}
@@ -530,7 +562,11 @@ function Step3({ d, set, errors, touched, mark, incomeBandMeta }: any) {
           <Labeled label="Corporation Tax UTR"><input value={d.utr} onChange={e => set({ utr: e.target.value })} onBlur={() => mark('utr')} placeholder="10 digits" className={`${fieldCls} font-mono`} /><FieldError name="utr" errors={errors} touched={touched} /></Labeled>
           <Labeled label="PAYE reference (optional)"><input value={d.payeRef} onChange={e => set({ payeRef: e.target.value })} className={`${fieldCls} font-mono`} /></Labeled>
           <Labeled label="CT payment group">
-            <select value={d.ctPaymentGroup} onChange={e => set({ ctPaymentGroup: e.target.value })} className={fieldCls}><option value="small">Small company</option><option value="large">Large company</option></select>
+            <select value={d.ctPaymentGroup} onChange={e => set({ ctPaymentGroup: e.target.value })} className={fieldCls}>
+              <option value="small">Small (≤£1.5m)</option>
+              <option value="large">Large (£1.5m–£20m)</option>
+              <option value="very_large">Very Large (&gt;£20m)</option>
+            </select>
           </Labeled>
           <div /><div className="col-span-2"><Toggle on={d.vatRegistered} onChange={(v: boolean) => set({ vatRegistered: v })} label="VAT registered" /></div>
           {d.vatRegistered && <>
@@ -588,24 +624,23 @@ function Step4({ servicesResolved, set, d, vatLocked, jobCount }: any) {
 }
 
 // ── Step 5 ──
-function Step5({ d, set, partners, members, touched, mark, error }: any) {
+function Step5({ d, set, partners, managers, touched, mark, error }: any) {
   const [tagInput, setTagInput] = useState('');
   const addTag = () => { const t = tagInput.trim(); if (t && !d.tags.includes(t)) set({ tags: [...d.tags, t] }); setTagInput(''); };
   return (
     <div className="space-y-5 animate-fadeIn">
       <div><h2 className="text-2xl font-bold text-slate-900">Practice details</h2><p className="text-slate-500 mt-1">Ownership, fees and how they found you.</p></div>
       <div className="grid grid-cols-2 gap-4">
-        <Labeled label="Assigned partner">
+        <Labeled label="Assigned partner (optional)">
           <select value={d.assignedPartnerId} onChange={e => { set({ assignedPartnerId: e.target.value }); mark('assignedPartnerId'); }} className={fieldCls}>
-            <option value="">Select partner…</option>
+            <option value="">Unassigned…</option>
             {partners.map((m: any) => <option key={m.id} value={m.id}>{m.name}</option>)}
           </select>
-          {touched.assignedPartnerId && !d.assignedPartnerId && <p className="flex items-center gap-1 text-xs text-red-600 mt-1"><AlertCircle size={12} /> Assigned partner is required</p>}
         </Labeled>
-        <Labeled label="Assigned manager">
+        <Labeled label="Assigned manager (optional)">
           <select value={d.assignedManagerId} onChange={e => set({ assignedManagerId: e.target.value })} className={fieldCls}>
-            <option value="">Select manager…</option>
-            {members.map((m: any) => <option key={m.id} value={m.id}>{m.name}</option>)}
+            <option value="">Unassigned…</option>
+            {managers.map((m: any) => <option key={m.id} value={m.id}>{m.name}</option>)}
           </select>
         </Labeled>
         <Labeled label="Client since"><input type="date" value={d.clientSince} onChange={e => set({ clientSince: e.target.value })} className={fieldCls} /></Labeled>
