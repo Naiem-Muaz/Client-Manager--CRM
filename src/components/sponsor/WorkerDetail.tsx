@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { ArrowLeft, Loader2, Pencil, X, Check, AlertTriangle, PoundSterling, CalendarX, ShieldCheck, Archive } from 'lucide-react';
-import { useSponsorWorker, updateWorker } from '../../hooks/useSponsorCompliance';
+import { ArrowLeft, Loader2, Pencil, X, Check, AlertTriangle, PoundSterling, CalendarX, ShieldCheck, Archive, FileArchive } from 'lucide-react';
+import { useSponsorWorker, updateWorker, downloadAuditPack } from '../../hooks/useSponsorCompliance';
 import { errMsg } from '../../lib/errMsg';
 import { fmtDate, fmtMoney, tierChipCls, salaryChip, chipBase, prettify } from './format';
 import { SECTIONS, FieldValue, EDITABLE_KEYS, labelFor } from './fields';
@@ -21,6 +21,14 @@ export function WorkerDetail({ id, onBack }: { id: string; onBack: () => void })
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sub, setSub] = useState('Documents');
+  const [packBusy, setPackBusy] = useState(false);
+
+  const genPack = async () => {
+    setPackBusy(true); setError(null);
+    try { await downloadAuditPack(id); }
+    catch (e: any) { setError(errMsg(e, 'Could not generate audit pack')); }
+    finally { setPackBusy(false); }
+  };
 
   if (isLoading || !w) return <div className="p-10 text-center text-slate-400"><Loader2 className="animate-spin inline mr-2" size={18} /> Loading…</div>;
 
@@ -48,7 +56,13 @@ export function WorkerDetail({ id, onBack }: { id: string; onBack: () => void })
               <button onClick={() => setEditing(false)} className="px-3.5 py-2 text-slate-600 text-sm font-medium hover:bg-slate-100 rounded-lg inline-flex items-center gap-1.5"><X size={15} /> Cancel</button>
               <button onClick={save} disabled={saving} className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 inline-flex items-center gap-1.5 shadow-sm">{saving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} Save changes</button>
             </div>
-          : <button onClick={startEdit} className="px-4 py-2 text-blue-700 text-sm font-medium hover:bg-blue-50 rounded-lg inline-flex items-center gap-1.5 border border-blue-100"><Pencil size={15} /> Edit record</button>}
+          : <div className="flex gap-2">
+              <button onClick={genPack} disabled={packBusy} title="Assemble a consolidated compliance pack (summary + evidence) as a ZIP"
+                className="px-4 py-2 text-slate-700 text-sm font-medium hover:bg-slate-100 rounded-lg inline-flex items-center gap-1.5 border border-slate-200 disabled:opacity-50">
+                {packBusy ? <Loader2 size={15} className="animate-spin" /> : <FileArchive size={15} />} {packBusy ? 'Generating…' : 'Generate audit pack'}
+              </button>
+              <button onClick={startEdit} className="px-4 py-2 text-blue-700 text-sm font-medium hover:bg-blue-50 rounded-lg inline-flex items-center gap-1.5 border border-blue-100"><Pencil size={15} /> Edit record</button>
+            </div>}
       </div>
 
       {/* header */}

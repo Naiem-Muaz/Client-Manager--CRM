@@ -128,3 +128,27 @@ export async function deleteWorkerDocument(docId: string) {
   const res = await NextGenAPI.delete(`${BASE}/documents/${docId}`);
   return res.data.data ?? res.data;
 }
+
+// ── audit pack (super-admin) ─────────────────────────────────────────────────
+/** Streams the server-assembled ZIP (summary PDF + evidence files) and triggers a
+ *  browser download. Throws a clean Error (parsed from the blob) on failure. */
+export async function downloadAuditPack(workerId: string): Promise<void> {
+  try {
+    const res = await NextGenAPI.get(`${BASE}/workers/${workerId}/audit-pack`, { responseType: 'blob' });
+    const cd = (res.headers?.['content-disposition'] as string) || '';
+    const m = /filename="?([^"]+)"?/.exec(cd);
+    const fileName = m ? m[1] : `audit-pack-${workerId}.zip`;
+    const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/zip' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = fileName;
+    document.body.appendChild(a); a.click(); a.remove();
+    window.URL.revokeObjectURL(url);
+  } catch (e: any) {
+    // With responseType 'blob', an error body arrives as a Blob — extract its JSON message.
+    const blob = e?.response?.data;
+    if (blob instanceof Blob) {
+      try { const j = JSON.parse(await blob.text()); throw new Error(j.error || 'Could not generate audit pack'); } catch (parsed: any) { if (parsed?.message) throw parsed; }
+    }
+    throw e;
+  }
+}
