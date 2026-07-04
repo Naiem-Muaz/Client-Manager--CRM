@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Plus, Loader2, Users, AlertTriangle, ChevronRight } from 'lucide-react';
+import { Plus, Loader2, Users, AlertTriangle, ChevronRight, X, Check } from 'lucide-react';
 import { useSponsorWorkers, createWorker, Worker } from '../../hooks/useSponsorCompliance';
-import { Modal, Labeled, inputCls } from '../settings/SettingsTabs';
 import { errMsg } from '../../lib/errMsg';
-import { fmtDate, fmtMoney, dateBand, DATE_BAND_CLS, salaryChip, chipBase, prettify, VISA_ROUTES, PAY_FREQUENCIES } from './format';
+import { fmtDate, fmtMoney, dateBand, DATE_BAND_CLS, salaryChip, chipBase, prettify } from './format';
+import { WorkerForm } from './WorkerForm';
 
 function AlertBadge({ worker }: { worker: Worker }) {
   const alerts = worker.computed?.alerts || [];
@@ -91,45 +91,43 @@ export function WorkerList({ onSelect }: { onSelect: (id: string) => void }) {
 }
 
 function CreateWorkerModal({ onClose, onDone }: { onClose: () => void; onDone: (id?: string) => void }) {
-  const [form, setForm] = useState<Record<string, any>>({ visaRoute: 'skilled_worker', rosterType: 'fixed' });
+  const [form, setForm] = useState<Record<string, any>>({ visaRoute: 'skilled_worker', status: 'active', rosterType: 'fixed', contractedWeekdays: [1, 2, 3, 4, 5] });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }));
 
   const submit = async () => {
-    if (!form.fullName?.trim()) { setError('Full name is required'); return; }
+    if (!String(form.fullName || '').trim()) { setError('Full name is required'); return; }
     setSaving(true); setError(null);
     try {
-      const created = await createWorker(form);
+      const payload: any = { ...form };
+      for (const k of Object.keys(payload)) if (payload[k] === '') payload[k] = null;
+      const created = await createWorker(payload);
       onDone(created?.id);
     } catch (e: any) { setError(errMsg(e, 'Could not create worker')); setSaving(false); }
   };
 
   return (
-    <Modal title="Add sponsored worker" onClose={onClose} onSubmit={submit} saving={saving} submitLabel="Create" error={error}>
-      <Labeled label="Full name (legal)"><input autoFocus value={form.fullName || ''} onChange={e => set('fullName', e.target.value)} className={inputCls} /></Labeled>
-      <div className="grid grid-cols-2 gap-3">
-        <Labeled label="Nationality"><input value={form.nationality || ''} onChange={e => set('nationality', e.target.value)} className={inputCls} /></Labeled>
-        <Labeled label="Date of birth"><input type="date" value={form.dateOfBirth || ''} onChange={e => set('dateOfBirth', e.target.value)} className={inputCls} /></Labeled>
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/40 backdrop-blur-sm p-4 sm:p-6 overflow-y-auto">
+      <div className="bg-slate-50 w-full max-w-4xl rounded-2xl shadow-2xl my-2 flex flex-col max-h-[92vh]">
+        <header className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-white rounded-t-2xl">
+          <div>
+            <h3 className="text-lg font-bold text-[#0F1E3A]">Add sponsored worker</h3>
+            <p className="text-xs text-slate-400 mt-0.5">Only the full legal name is required — capture as much of the record as you have now.</p>
+          </div>
+          <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg"><X size={18} /></button>
+        </header>
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          <WorkerForm value={form} onChange={set} />
+        </div>
+        <footer className="flex items-center gap-3 px-6 py-4 border-t border-slate-200 bg-white rounded-b-2xl">
+          {error && <span className="text-sm text-rose-600">{error}</span>}
+          <div className="flex gap-2 ml-auto">
+            <button onClick={onClose} className="px-4 py-2 text-slate-600 text-sm font-medium hover:bg-slate-100 rounded-lg">Cancel</button>
+            <button onClick={submit} disabled={saving} className="px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 inline-flex items-center gap-1.5 shadow-sm">{saving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} Create worker</button>
+          </div>
+        </footer>
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <Labeled label="Visa route">
-          <select value={form.visaRoute} onChange={e => set('visaRoute', e.target.value)} className={inputCls}>
-            {VISA_ROUTES.map(r => <option key={r} value={r}>{r.replace(/_/g, ' ')}</option>)}
-          </select>
-        </Labeled>
-        <Labeled label="Pay frequency">
-          <select value={form.payFrequency || ''} onChange={e => set('payFrequency', e.target.value || undefined)} className={inputCls}>
-            <option value="">—</option>
-            {PAY_FREQUENCIES.map(p => <option key={p} value={p}>{p.replace(/_/g, ' ')}</option>)}
-          </select>
-        </Labeled>
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <Labeled label="Visa expiry"><input type="date" value={form.visaExpiryDate || ''} onChange={e => set('visaExpiryDate', e.target.value)} className={inputCls} /></Labeled>
-        <Labeled label="CoS reference"><input value={form.cosReference || ''} onChange={e => set('cosReference', e.target.value)} className={inputCls} /></Labeled>
-      </div>
-      <p className="text-xs text-slate-400">You can complete the full record after creating the worker.</p>
-    </Modal>
+    </div>
   );
 }
