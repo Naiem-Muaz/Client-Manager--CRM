@@ -47,6 +47,10 @@ export function ClientDeadlinesTab({ clientId, onNavigate }: { clientId: string;
       if (status === 'filed' || status === 'confirmed') {
         showToast('Marked filed — next period generated', 'success');
         mutate(); // pull in the newly auto-rolled period
+      } else {
+        // Intermediate statuses (submitted, in_progress, …) persist too — give
+        // visible confirmation so the change doesn't read as "nothing happened".
+        showToast(`Status updated to ${STATUS_LABELS[status] ?? status}`, 'success');
       }
     } catch {
       showToast('Could not update status — reverted', 'error');
