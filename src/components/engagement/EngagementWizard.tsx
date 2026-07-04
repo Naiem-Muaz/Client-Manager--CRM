@@ -11,6 +11,9 @@ export function EngagementWizard({ clientId, onClose, onDone }: { clientId: stri
   const [draft, setDraft] = useState<Engagement | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Set when the letter was marked sent but NOT emailed (no client email / send
+  // failed) — we keep the wizard open and offer the signing link to share.
+  const [warning, setWarning] = useState<{ msg: string; link: string } | null>(null);
 
   // Step 1 → 2: generate the draft (server merges the fields).
   const goReview = async () => {
@@ -24,12 +27,23 @@ export function EngagementWizard({ clientId, onClose, onDone }: { clientId: stri
     finally { setBusy(false); }
   };
 
-  // Step 3: send for signature.
+  // Step 3: send for signature. The server reports whether the client was
+  // actually emailed — surface it honestly rather than always showing success.
   const send = async () => {
     if (!draft) return;
-    setBusy(true); setError(null);
+    setBusy(true); setError(null); setWarning(null);
     try {
-      await sendEngagement(clientId, draft.id);
+      const res: any = await sendEngagement(clientId, draft.id);
+      if (res?.emailSent === false) {
+        setWarning({
+          msg: res.emailStatus === 'no_client_email'
+            ? 'Marked as sent, but this client has no email address on record, so nothing was emailed. Copy the signing link below to share it with them directly.'
+            : `Marked as sent, but the email could not be delivered${res.emailDetail ? ` (${res.emailDetail})` : ''}. Copy the signing link below to share it manually.`,
+          link: res.signUrl || '',
+        });
+        setBusy(false);
+        return; // keep the wizard open so they can copy the link
+      }
       onDone();
     } catch (e: any) { setError(errMsg(e, 'Failed to send for signature')); setBusy(false); }
   };
@@ -85,6 +99,18 @@ export function EngagementWizard({ clientId, onClose, onDone }: { clientId: stri
           )}
 
           {error && <p className="text-sm text-red-600 mt-3">{error}</p>}
+
+          {warning && (
+            <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-4">
+              <p className="text-sm text-amber-800">{warning.msg}</p>
+              {warning.link && (
+                <div className="mt-3 flex items-center gap-2">
+                  <input readOnly value={warning.link} className="flex-1 text-xs font-mono bg-white border border-amber-200 rounded px-2 py-1.5 text-slate-700" onFocus={e => e.currentTarget.select()} />
+                  <button onClick={() => navigator.clipboard?.writeText(warning.link)} className="px-3 py-1.5 text-xs font-medium bg-amber-600 text-white rounded hover:bg-amber-700">Copy link</button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex justify-between">
@@ -99,9 +125,14 @@ export function EngagementWizard({ clientId, onClose, onDone }: { clientId: stri
           {step === 2 && (
             <button onClick={() => setStep(3)} className="px-6 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 text-sm inline-flex items-center gap-1">Continue <ChevronRight size={16} /></button>
           )}
-          {step === 3 && (
+          {step === 3 && !warning && (
             <button onClick={send} disabled={busy} className="px-6 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 disabled:opacity-50 text-sm inline-flex items-center gap-2">
               {busy ? <><Loader2 size={14} className="animate-spin" /> Sending…</> : <><Send size={16} /> Send for signature</>}
+            </button>
+          )}
+          {step === 3 && warning && (
+            <button onClick={onDone} className="px-6 py-2 bg-slate-800 text-white rounded-lg font-medium hover:bg-slate-900 text-sm inline-flex items-center gap-2">
+              <Check size={16} /> Done
             </button>
           )}
         </div>
