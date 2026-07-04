@@ -25,11 +25,16 @@ export async function uploadDocument(
   extra?: Record<string, string>
 ) {
   const formData = new FormData();
-  formData.append('document', file);
+  // Backend (documents.ts) parses the file with multer's upload.single('file')
+  // and reads the type from `category` — the field was previously named
+  // 'document', so every upload was rejected as "No file uploaded".
+  formData.append('file', file);
   formData.append('category', category);
   if (extra) Object.entries(extra).forEach(([k, v]) => formData.append(k, v));
 
-  const uploadUrl = clientId ? `/brain/clients/${clientId}/documents/upload` : `/brain/documents/upload`;
+  // Route is POST /api/brain/clients/:id/documents (no '/upload' suffix) — the
+  // old '/upload' path matched no route and 404'd.
+  const uploadUrl = clientId ? `/brain/clients/${clientId}/documents` : `/brain/documents`;
   const response = await NextGenAPI.post(uploadUrl, formData, {
     headers: {
       'Content-Type': 'multipart/form-data'
