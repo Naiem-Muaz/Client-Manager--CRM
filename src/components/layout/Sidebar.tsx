@@ -15,15 +15,21 @@ import {
   FileBarChart,
   CloudUpload,
   Zap,
-  ExternalLink
+  ExternalLink,
+  LogOut,
+  User as UserIcon
 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 
 interface SidebarProps {
   collapsed: boolean;
   setCollapsed: (collapsed: boolean) => void;
 }
 
+const roleLabel = (r?: string) => (r ? r.replace(/[_-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'Signed in');
+
 export function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
+  const { user, logout } = useAuth();
   const navItems = [
     { icon: LayoutDashboard, label: 'Dashboard', to: '/' },
     { icon: ShieldAlert, label: 'Compliance', to: '/compliance' },
@@ -159,13 +165,29 @@ export function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
 
       </nav>
 
-      {/* Bottom Actions Only - User Profile Removed */}
-      <div className="p-4 border-t border-slate-800 bg-[#0B162A]">
-         <button 
+      {/* Signed-in user + sign out + collapse */}
+      <div className="p-3 border-t border-slate-800 bg-[#0B162A] space-y-1">
+        {!collapsed && (
+          <div className="flex items-center gap-2.5 px-2 py-2">
+            <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-slate-300 flex-shrink-0"><UserIcon size={16} /></div>
+            <div className="min-w-0">
+              <div className="text-sm text-white font-medium truncate">{user?.email || roleLabel(user?.role)}</div>
+              {user?.email && <div className="text-[11px] text-slate-400">{roleLabel(user?.role)}</div>}
+            </div>
+          </div>
+        )}
+        <button
+          onClick={logout}
+          title="Sign out"
+          className={`w-full flex items-center ${collapsed ? 'justify-center' : 'gap-2'} p-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors`}
+        >
+          <LogOut size={16} />{!collapsed && <span className="text-sm font-medium">Sign out</span>}
+        </button>
+        <button
           onClick={() => setCollapsed(!collapsed)}
           className="w-full flex items-center justify-center p-2 hover:bg-white/5 rounded-lg text-slate-400 hover:text-white transition-colors"
         >
-             {collapsed ? <ChevronRight size={16} /> : <div className="flex items-center gap-2"><ChevronLeft size={16} /> <span className="text-xs font-medium uppercase tracking-wider">Collapse</span></div>}
+          {collapsed ? <ChevronRight size={16} /> : <div className="flex items-center gap-2"><ChevronLeft size={16} /> <span className="text-xs font-medium uppercase tracking-wider">Collapse</span></div>}
         </button>
       </div>
     </aside>
