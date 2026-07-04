@@ -4,10 +4,11 @@ import { useSponsorWorkers, createWorker, Worker } from '../../hooks/useSponsorC
 import { errMsg } from '../../lib/errMsg';
 import { fmtDate, fmtMoney, dateBand, DATE_BAND_CLS, salaryChip, chipBase, prettify } from './format';
 import { WorkerForm } from './WorkerForm';
+import { Avatar, ViewHeader, EmptyState, TableCard, th, td, btnPrimary } from './ui';
 
 function AlertBadge({ worker }: { worker: Worker }) {
   const alerts = worker.computed?.alerts || [];
-  if (!alerts.length) return <span className="text-xs text-slate-400">—</span>;
+  if (!alerts.length) return <span className="text-xs text-emerald-600 font-medium">Clear</span>;
   const esc = alerts.filter(a => a.tier === 'escalate').length;
   const warn = alerts.filter(a => a.tier === 'warning').length;
   return (
@@ -24,65 +25,54 @@ export function WorkerList({ onSelect }: { onSelect: (id: string) => void }) {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-lg font-semibold text-slate-900">Sponsored workers</h3>
-          <p className="text-slate-500 text-sm">Appendix D records and at-a-glance compliance.</p>
-        </div>
-        <button onClick={() => setShowCreate(true)} className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">
-          <Plus size={16} /> Add worker
-        </button>
-      </div>
+      <ViewHeader title="Sponsored workers" subtitle="Appendix D records and at-a-glance compliance."
+        action={<button onClick={() => setShowCreate(true)} className={btnPrimary}><Plus size={16} /> Add worker</button>} />
 
       {isLoading ? (
-        <div className="space-y-2">{[1, 2, 3].map(i => <div key={i} className="h-14 bg-slate-100 rounded-xl animate-pulse" />)}</div>
+        <div className="space-y-2">{[1, 2, 3].map(i => <div key={i} className="h-16 bg-slate-100 rounded-xl animate-pulse" />)}</div>
       ) : workers.length === 0 ? (
-        <div className="bg-white border border-dashed border-slate-200 rounded-xl p-12 text-center">
-          <div className="w-14 h-14 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3 text-slate-400"><Users size={26} /></div>
-          <h4 className="text-base font-semibold text-slate-900">No sponsored workers yet</h4>
-          <p className="text-slate-500 text-sm mt-1">Add a worker to start tracking their compliance.</p>
-        </div>
+        <EmptyState icon={Users} title="No sponsored workers yet" hint="Add a worker to start tracking their compliance." />
       ) : (
-        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-medium">
-              <tr>
-                <th className="px-5 py-3">Worker</th>
-                <th className="px-5 py-3">Visa expiry</th>
-                <th className="px-5 py-3">Salary</th>
-                <th className="px-5 py-3">Absence</th>
-                <th className="px-5 py-3">Alerts</th>
-                <th className="px-5 py-3"></th>
+        <TableCard head={
+          <tr>
+            <th className={th}>Worker</th>
+            <th className={th}>Visa expiry</th>
+            <th className={th}>Salary</th>
+            <th className={th}>Absence</th>
+            <th className={th}>Alerts</th>
+            <th className={th}></th>
+          </tr>
+        }>
+          {workers.map(w => {
+            const sc = salaryChip(w.computed?.salary?.status);
+            const abs = w.computed?.unauthorisedAbsence;
+            return (
+              <tr key={w.id} onClick={() => onSelect(w.id)} className="group hover:bg-slate-50 cursor-pointer">
+                <td className={td}>
+                  <div className="flex items-center gap-3">
+                    <Avatar name={w.fullName} size={38} />
+                    <div className="min-w-0">
+                      <div className="font-medium text-[#0F1E3A] truncate">{w.fullName}</div>
+                      <div className="text-xs text-slate-400 truncate">{prettify(w.visaRoute)}{w.nationality ? ` · ${w.nationality}` : ''}</div>
+                    </div>
+                  </div>
+                </td>
+                <td className={`${td} tabular-nums ${DATE_BAND_CLS[dateBand(w.visaExpiryDate)]}`}>{fmtDate(w.visaExpiryDate)}</td>
+                <td className={td}>
+                  <span className={`${chipBase} ${sc.cls}`}>{sc.label}</span>
+                  {w.computed?.requiredSalary != null && <div className="text-xs text-slate-400 mt-0.5 tabular-nums">req. {fmtMoney(w.computed.requiredSalary)}</div>}
+                </td>
+                <td className={td}>
+                  {abs?.breaches
+                    ? <span className={`${chipBase} bg-rose-100 text-rose-700 border-rose-200`}><AlertTriangle size={11} /> {abs.maxStreak}d streak</span>
+                    : <span className="text-xs text-slate-500 tabular-nums">{abs?.maxStreak ? `${abs.maxStreak}d` : 'None'}</span>}
+                </td>
+                <td className={td}><AlertBadge worker={w} /></td>
+                <td className={`${td} text-right text-slate-300 group-hover:text-slate-500`}><ChevronRight size={18} /></td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {workers.map(w => {
-                const sc = salaryChip(w.computed?.salary?.status);
-                const abs = w.computed?.unauthorisedAbsence;
-                return (
-                  <tr key={w.id} onClick={() => onSelect(w.id)} className="group hover:bg-slate-50 cursor-pointer">
-                    <td className="px-5 py-3.5">
-                      <div className="font-medium text-slate-900">{w.fullName}</div>
-                      <div className="text-xs text-slate-400">{prettify(w.visaRoute)}{w.nationality ? ` · ${w.nationality}` : ''}</div>
-                    </td>
-                    <td className={`px-5 py-3.5 ${DATE_BAND_CLS[dateBand(w.visaExpiryDate)]}`}>{fmtDate(w.visaExpiryDate)}</td>
-                    <td className="px-5 py-3.5">
-                      <span className={`${chipBase} ${sc.cls}`}>{sc.label}</span>
-                      {w.computed?.requiredSalary != null && <div className="text-xs text-slate-400 mt-0.5">req. {fmtMoney(w.computed.requiredSalary)}</div>}
-                    </td>
-                    <td className="px-5 py-3.5">
-                      {abs?.breaches
-                        ? <span className={`${chipBase} bg-rose-100 text-rose-700 border-rose-200`}>{abs.maxStreak}d streak</span>
-                        : <span className="text-xs text-slate-500">{abs?.maxStreak ? `${abs.maxStreak}d` : 'None'}</span>}
-                    </td>
-                    <td className="px-5 py-3.5"><AlertBadge worker={w} /></td>
-                    <td className="px-5 py-3.5 text-right text-slate-300 group-hover:text-slate-500"><ChevronRight size={18} /></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+            );
+          })}
+        </TableCard>
       )}
 
       {showCreate && <CreateWorkerModal onClose={() => setShowCreate(false)} onDone={id => { setShowCreate(false); mutate(); if (id) onSelect(id); }} />}

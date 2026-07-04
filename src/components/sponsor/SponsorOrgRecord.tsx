@@ -1,16 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { Loader2, Check, Plus, ClipboardCheck } from 'lucide-react';
+import { Loader2, Check, Plus, ClipboardCheck, BadgeCheck, Users, MapPin, ShieldCheck } from 'lucide-react';
 import { useOrgCompliance, upsertOrgCompliance } from '../../hooks/useSponsorCompliance';
 import { useTeamMembers } from '../../hooks/useTeam';
 import { Labeled, inputCls } from '../settings/SettingsTabs';
 import { errMsg } from '../../lib/errMsg';
 import { fmtDate } from './format';
+import { SectionCard, ViewHeader, btnPrimary } from './ui';
 
-const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
-  <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
-    <h4 className="text-sm font-semibold text-slate-900">{title}</h4>
-    {children}
-  </div>
+const Section = ({ title, icon, children }: { title: string; icon?: any; children: React.ReactNode }) => (
+  <SectionCard icon={icon} title={title}><div className="space-y-4">{children}</div></SectionCard>
 );
 
 export function SponsorOrgRecord() {
@@ -45,16 +43,16 @@ export function SponsorOrgRecord() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <div><h3 className="text-lg font-semibold text-slate-900">Organisation sponsor record</h3><p className="text-slate-500 text-sm">Licence, key personnel and the monthly SMS check log.</p></div>
-        <button onClick={save} disabled={saving} className="inline-flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50">
-          {saving ? <Loader2 size={16} className="animate-spin" /> : saved ? <Check size={16} /> : null} {saved ? 'Saved' : 'Save record'}
-        </button>
-      </div>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      <ViewHeader title="Organisation sponsor record" subtitle="Licence, key personnel and the monthly SMS check log."
+        action={
+          <button onClick={save} disabled={saving} className={btnPrimary}>
+            {saving ? <Loader2 size={16} className="animate-spin" /> : saved ? <Check size={16} /> : null} {saved ? 'Saved' : 'Save record'}
+          </button>
+        } />
+      {error && <p className="text-sm text-rose-600">{error}</p>}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <Section title="Sponsor licence">
+        <Section title="Sponsor licence" icon={BadgeCheck}>
           <Labeled label="Licence number"><input value={form.sponsorLicenceNumber || ''} onChange={e => set('sponsorLicenceNumber', e.target.value)} className={inputCls} /></Labeled>
           <div className="grid grid-cols-2 gap-3">
             <Labeled label="Rating"><select value={form.licenceRating || ''} onChange={e => set('licenceRating', e.target.value || null)} className={inputCls}><option value="">—</option><option value="A">A-rating</option><option value="B">B-rating</option></select></Labeled>
@@ -66,7 +64,7 @@ export function SponsorOrgRecord() {
           </div>
         </Section>
 
-        <Section title="Key personnel">
+        <Section title="Key personnel" icon={Users}>
           <div className="grid grid-cols-2 gap-3">
             <Labeled label="Authorising officer"><select value={form.authorisingOfficerUserId || ''} onChange={e => set('authorisingOfficerUserId', e.target.value || null)} className={inputCls}><option value="">—</option>{staff.map((m: any) => <option key={m.id} value={m.id}>{m.name}</option>)}</select></Labeled>
             <Labeled label="Key contact"><select value={form.keyContactUserId || ''} onChange={e => set('keyContactUserId', e.target.value || null)} className={inputCls}><option value="">—</option>{staff.map((m: any) => <option key={m.id} value={m.id}>{m.name}</option>)}</select></Labeled>
@@ -77,7 +75,7 @@ export function SponsorOrgRecord() {
           </div>
         </Section>
 
-        <Section title="Trading address">
+        <Section title="Trading address" icon={MapPin}>
           <Labeled label="Address line 1"><input value={form.tradingAddressLine1 || ''} onChange={e => set('tradingAddressLine1', e.target.value)} className={inputCls} /></Labeled>
           <Labeled label="Address line 2"><input value={form.tradingAddressLine2 || ''} onChange={e => set('tradingAddressLine2', e.target.value)} className={inputCls} /></Labeled>
           <div className="grid grid-cols-2 gap-3">
@@ -86,7 +84,7 @@ export function SponsorOrgRecord() {
           </div>
         </Section>
 
-        <Section title="Corporate structure & GDPR">
+        <Section title="Corporate structure & GDPR" icon={ShieldCheck}>
           <Labeled label="Corporate structure notes"><textarea value={form.corporateStructureNotes || ''} onChange={e => set('corporateStructureNotes', e.target.value)} rows={3} className={`${inputCls} resize-none`} /></Labeled>
           <Labeled label="Anonymise records after (months post-leaving)"><input type="number" min={12} value={form.gdprAnonymiseAfterMonths ?? 24} onChange={e => set('gdprAnonymiseAfterMonths', Number(e.target.value))} className={inputCls} /></Labeled>
         </Section>
@@ -124,8 +122,8 @@ function MonthlyChecks({ form, set, nameOf, staff }: { form: any; set: (k: strin
     setDate(''); setBy('');
   };
   return (
-    <Section title="Monthly SMS check log">
-      <p className="text-xs text-slate-500 -mt-2">Records the routine SMS checks that drive the monthly-check reminder. Last check: <strong>{fmtDate(form.lastSmsCheckDate)}</strong>.</p>
+    <Section title="Monthly SMS check log" icon={ClipboardCheck}>
+      <p className="text-xs text-slate-500 -mt-1">Records the routine SMS checks that drive the monthly-check reminder. Last check: <strong className="text-[#0F1E3A]">{fmtDate(form.lastSmsCheckDate)}</strong>.</p>
       <div className="flex flex-wrap items-end gap-3">
         <Labeled label="Date checked"><input type="date" value={date} onChange={e => setDate(e.target.value)} className={inputCls} /></Labeled>
         <Labeled label="Checked by"><select value={by} onChange={e => setBy(e.target.value)} className={inputCls}><option value="">—</option>{staff.map((m: any) => <option key={m.id} value={m.id}>{m.name}</option>)}</select></Labeled>

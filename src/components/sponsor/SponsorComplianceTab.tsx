@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Users, Bell, Building2, ShieldCheck } from 'lucide-react';
+import { Users, Bell, Building2, Lock } from 'lucide-react';
 import { WorkerList } from './WorkerList';
 import { WorkerDetail } from './WorkerDetail';
 import { SponsorAlertDashboard } from './SponsorAlertDashboard';
@@ -25,16 +25,16 @@ export function SponsorComplianceTab() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start gap-3 rounded-lg bg-indigo-50 border border-indigo-100 p-3 text-indigo-800">
-        <ShieldCheck size={18} className="mt-0.5 flex-shrink-0" />
-        <p className="text-sm">Sensitive immigration data — visible to super-admins only. All access to documents is logged.</p>
+      <div className="flex items-start gap-2.5 rounded-xl bg-slate-50 border border-slate-200 p-3 text-slate-600">
+        <span className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-[#2F4A7D] flex-shrink-0"><Lock size={14} /></span>
+        <p className="text-sm pt-1">Sensitive immigration data — visible to super-admins only. All access to documents is logged.</p>
       </div>
 
       {!selectedWorker && (
         <div className="flex gap-1 border-b border-slate-200">
           {NAV.map(n => (
             <button key={n.id} onClick={() => setView(n.id)}
-              className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 -mb-px ${view === n.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+              className={`inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${view === n.id ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
               <n.icon size={16} /> {n.label}
             </button>
           ))}

@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Send } from 'lucide-react';
 import { createSmsReport, patchSmsReport } from '../../hooks/useSponsorCompliance';
 import { Modal, Labeled, inputCls } from '../settings/SettingsTabs';
 import { errMsg } from '../../lib/errMsg';
-import { fmtDate, chipBase, daysUntil, addWorkingDays } from './format';
+import { fmtDate, chipBase, daysUntil, addWorkingDays, prettify } from './format';
+import { EmptyState, TableCard, th, td, btnPrimary } from './ui';
 
 const REPORT_TYPES = ['change_of_circumstances', 'migrant_activity', 'salary_change', 'role_change', 'absence', 'early_termination', 'other'];
 
@@ -24,37 +25,30 @@ export function SponsorSmsReports({ worker, onChanged }: { worker: any; onChange
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div>
-          <h4 className="text-sm font-semibold text-slate-900">SMS reports</h4>
+          <h4 className="text-sm font-semibold text-[#0F1E3A]">SMS reports</h4>
           <p className="text-xs text-slate-500">Sponsor Management System reporting — 10/20 working-day deadlines.</p>
         </div>
-        <button onClick={() => setShowAdd(true)} className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700"><Plus size={16} /> New report</button>
+        <button onClick={() => setShowAdd(true)} className={btnPrimary}><Plus size={16} /> New report</button>
       </div>
 
       {reports.length === 0 ? (
-        <p className="text-sm text-slate-400 text-center py-8">No SMS reports logged.</p>
+        <EmptyState icon={Send} title="No SMS reports logged" hint="Log reportable changes to track the 10/20 working-day SMS deadlines." />
       ) : (
-        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-medium">
-              <tr><th className="px-4 py-2.5">What</th><th className="px-4 py-2.5">Tier</th><th className="px-4 py-2.5">Deadline</th><th className="px-4 py-2.5">Status</th><th className="px-4 py-2.5"></th></tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {reports.map((r: any) => (
-                <tr key={r.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3 text-slate-800">{(r.reportType || '').replace(/_/g, ' ')}{r.description ? <span className="text-slate-400 text-xs"> · {r.description}</span> : ''}</td>
-                  <td className="px-4 py-3 text-slate-500">{r.tier === '10_day' ? '10-day' : '20-day'}</td>
-                  <td className="px-4 py-3 text-slate-600">{fmtDate(r.deadline)}</td>
-                  <td className="px-4 py-3"><Countdown deadline={r.deadline} status={r.status} /></td>
-                  <td className="px-4 py-3 text-right">
-                    {r.status !== 'submitted' && <button onClick={() => setSubmitting(r)} className="text-blue-600 hover:text-blue-800 text-xs font-medium">Mark submitted</button>}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <TableCard head={<tr><th className={th}>What</th><th className={th}>Tier</th><th className={th}>Deadline</th><th className={th}>Status</th><th className={th}></th></tr>}>
+          {reports.map((r: any) => (
+            <tr key={r.id} className="hover:bg-slate-50">
+              <td className={`${td} text-[#0F1E3A]`}>{prettify(r.reportType)}{r.description ? <span className="text-slate-400 text-xs"> · {r.description}</span> : ''}</td>
+              <td className={`${td} text-slate-500`}>{r.tier === '10_day' ? '10-day' : '20-day'}</td>
+              <td className={`${td} text-slate-600 tabular-nums`}>{fmtDate(r.deadline)}</td>
+              <td className={td}><Countdown deadline={r.deadline} status={r.status} /></td>
+              <td className={`${td} text-right`}>
+                {r.status !== 'submitted' && <button onClick={() => setSubmitting(r)} className="text-blue-600 hover:text-blue-800 text-xs font-medium">Mark submitted</button>}
+              </td>
+            </tr>
+          ))}
+        </TableCard>
       )}
 
       {showAdd && <AddReport worker={worker} onClose={() => setShowAdd(false)} onDone={() => { setShowAdd(false); onChanged(); }} />}
