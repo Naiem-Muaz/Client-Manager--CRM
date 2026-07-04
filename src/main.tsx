@@ -66,7 +66,9 @@ function App() {
             <Route path="/clients/:id" element={<ClientDetailPage />} />
             <Route path="/entities/:entityId" element={<EntityDetailPage />} />
             <Route path="/entities/:entityId/periods/:periodId" element={<AccountingPeriodPage />} />
-            <Route path="/tasks" element={<TasksPage />} />
+            {/* /tasks is retired — the dead shell; send old links/bookmarks to the
+                working jobs board. (TasksPage kept but unreachable; delete later.) */}
+            <Route path="/tasks" element={<Navigate to="/work" replace />} />
             <Route path="/work" element={<WorkPage />} />
             <Route path="/documents" element={<DocumentsPage />} />
             <Route path="/deadlines" element={<RouteErrorBoundary label="deadlines"><DeadlinesPage /></RouteErrorBoundary>} />

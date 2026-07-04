@@ -133,7 +133,9 @@ export function TaskDetailModal({ job: initialJob, onClose, onChanged }: { job: 
             <Row label="Assignee">
               <select value={job.assigneeId || ''} onChange={e => update('assigneeId', e.target.value || null)} className={field}>
                 <option value="">Unassigned</option>
-                {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                {/* Only active staff can be assigned — a pending invitee's id isn't
+                    a user_profiles row, so the jobs.assignee_id FK would reject it. */}
+                {members.filter(m => m.status !== 'pending').map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
               </select>
             </Row>
             <Row label="Due date">
