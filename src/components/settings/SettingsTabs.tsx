@@ -191,11 +191,11 @@ function EditMemberModal({ member, onClose, onDone }: { member: TeamMember; onCl
     );
 }
 
-const inputCls = 'w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-100';
-function Labeled({ label, children }: { label: string; children: React.ReactNode }) {
+export const inputCls = 'w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-100';
+export function Labeled({ label, children }: { label: string; children: React.ReactNode }) {
     return <div className="space-y-1"><label className="text-xs font-bold text-slate-500 uppercase tracking-wide">{label}</label>{children}</div>;
 }
-function Modal({ title, onClose, onSubmit, saving, submitLabel, error, children }: any) {
+export function Modal({ title, onClose, onSubmit, saving, submitLabel, error, children }: any) {
     return (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">

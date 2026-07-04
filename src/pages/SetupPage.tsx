@@ -5,20 +5,28 @@ import {
     Zap,
     AlertTriangle,
     Building2,
+    ShieldCheck,
     Save
 } from 'lucide-react';
 import { UsersTab, HMRCTab, WorkflowTab, RiskTab } from '../components/settings/SettingsTabs';
 import { FirmSettingsTab } from '../components/settings/FirmSettingsTab';
+import { SponsorComplianceTab } from '../components/sponsor/SponsorComplianceTab';
+import { useAuth } from '../context/AuthContext';
 
 export function SetupPage() {
+    const { user } = useAuth();
+    const isSuperAdmin = user?.role === 'super_admin';
     const [activeTab, setActiveTab] = useState('users');
 
+    // Sponsor Compliance holds sensitive immigration data — the tab is hidden
+    // entirely for non-super-admins (backend also enforces super_admin + org-lock).
     const tabs = [
         { id: 'firm', label: 'Firm Settings', icon: Building2 },
         { id: 'users', label: 'Users & Roles', icon: Users },
         { id: 'hmrc', label: 'HMRC Setup', icon: Shield },
         { id: 'workflow', label: 'Workflow Rules', icon: Zap },
         { id: 'risk', label: 'Risk Thresholds', icon: AlertTriangle },
+        ...(isSuperAdmin ? [{ id: 'sponsor', label: 'Sponsor Compliance', icon: ShieldCheck }] : []),
     ];
 
     return (
@@ -60,6 +68,7 @@ export function SetupPage() {
                 {activeTab === 'hmrc' && <HMRCTab />}
                 {activeTab === 'workflow' && <WorkflowTab />}
                 {activeTab === 'risk' && <RiskTab />}
+                {activeTab === 'sponsor' && isSuperAdmin && <SponsorComplianceTab />}
             </div>
         </div>
     );
