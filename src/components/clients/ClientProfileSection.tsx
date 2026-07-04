@@ -55,11 +55,16 @@ export function ClientProfileSection({ client }: { client: any }) {
                     <div className="flex items-start gap-2 text-slate-600">
                         <MapPin size={14} className="mt-0.5 flex-shrink-0" />
                         <span>
-                            {client.address && (
-                                <>
-                                    {client.address.line1}, {client.address.town}, <span className="font-medium text-slate-900">{client.address.postcode}</span>
-                                </>
-                            )}
+                            {client.address
+                                ? <>
+                                    {[client.address.line1, client.address.line2, client.address.town]
+                                        .filter(Boolean).join(', ')}
+                                    {client.address.postcode && <>
+                                        {[client.address.line1, client.address.line2, client.address.town].filter(Boolean).length > 0 ? ' ' : ''}
+                                        <span className="font-medium text-slate-900">{client.address.postcode}</span>
+                                    </>}
+                                  </>
+                                : <span className="text-slate-400">Not provided</span>}
                         </span>
                     </div>
                 </div>
