@@ -19,6 +19,7 @@ import { SubmissionsPage } from "./pages/SubmissionsPage";
 import { AuditPage } from "./pages/AuditPage";
 import { VerticalSlicePage } from "./pages/VerticalSlicePage";
 import { MTDCommandCentre } from "./pages/MTDCommandCentre";
+import MyTimePage from "./pages/MyTimePage";
 import { SigningPage } from "./pages/SigningPage";
 import { LoginPage } from "./pages/LoginPage";
 import { AcceptInvitePage } from "./pages/AcceptInvitePage";
@@ -77,6 +78,7 @@ function App() {
             <Route path="/setup" element={<SetupPage />} />
             <Route path="/vertical-slice" element={<VerticalSlicePage />} />
             <Route path="/mtd" element={<MTDCommandCentre />} />
+            <Route path="/my-time" element={<MyTimePage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>

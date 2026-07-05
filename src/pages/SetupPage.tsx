@@ -6,11 +6,13 @@ import {
     AlertTriangle,
     Building2,
     ShieldCheck,
+    Clock,
     Save
 } from 'lucide-react';
 import { UsersTab, HMRCTab, WorkflowTab, RiskTab } from '../components/settings/SettingsTabs';
 import { FirmSettingsTab } from '../components/settings/FirmSettingsTab';
 import { SponsorComplianceTab } from '../components/sponsor/SponsorComplianceTab';
+import { TeamAttendance } from '../components/hr/TeamAttendance';
 import { useAuth } from '../context/AuthContext';
 
 export function SetupPage() {
@@ -26,7 +28,7 @@ export function SetupPage() {
         { id: 'hmrc', label: 'HMRC Setup', icon: Shield },
         { id: 'workflow', label: 'Workflow Rules', icon: Zap },
         { id: 'risk', label: 'Risk Thresholds', icon: AlertTriangle },
-        ...(isSuperAdmin ? [{ id: 'sponsor', label: 'Sponsor Compliance', icon: ShieldCheck }] : []),
+        ...(isSuperAdmin ? [{ id: 'sponsor', label: 'Sponsor Compliance', icon: ShieldCheck }, { id: 'attendance', label: 'Team Attendance', icon: Clock }] : []),
     ];
 
     return (
@@ -69,6 +71,7 @@ export function SetupPage() {
                 {activeTab === 'workflow' && <WorkflowTab />}
                 {activeTab === 'risk' && <RiskTab />}
                 {activeTab === 'sponsor' && isSuperAdmin && <SponsorComplianceTab />}
+                {activeTab === 'attendance' && isSuperAdmin && <TeamAttendance />}
             </div>
         </div>
     );

@@ -32,6 +32,7 @@ export function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
   const { user, logout } = useAuth();
   const navItems = [
     { icon: LayoutDashboard, label: 'Dashboard', to: '/' },
+    { icon: Clock, label: 'My Time', to: '/my-time' },
     { icon: ShieldAlert, label: 'Compliance', to: '/compliance' },
     { icon: Zap, label: 'MTD', to: '/mtd' },
     { icon: Users, label: 'Clients', to: '/clients' },
