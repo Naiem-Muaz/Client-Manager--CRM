@@ -15,9 +15,15 @@ export function MyAttendance() {
   // live counter for the open segment
   useEffect(() => { const t = setInterval(() => tick(n => n + 1), 30_000); return () => clearInterval(t); }, []);
 
-  if (isError?.response?.status === 403) {
-    return <EmptyState icon={CalendarClock} title="Time tracking isn't set up for you"
-      hint="Ask a practice admin to enable clocking for your account (Practice Settings → Team Attendance)." />;
+  // The API interceptor rejects with the response BODY ({success,error}) and strips
+  // the HTTP status, so key off the message too — and NEVER fall through to the
+  // loading skeleton on error (that was the blank-card bug).
+  if (isError) {
+    const msg = isError?.error || isError?.response?.data?.error || isError?.message || '';
+    const notEnrolled = isError?.response?.status === 403 || /enrolled|clocking staff/i.test(msg);
+    return <EmptyState icon={CalendarClock}
+      title={notEnrolled ? "Time tracking isn't set up for you" : 'Could not load your attendance'}
+      hint={notEnrolled ? 'Ask a practice admin to enable clocking for your account (Practice Settings → Team Attendance).' : (msg || 'Please try again in a moment.')} />;
   }
   if (isLoading || !attendance) return <div className="h-40 bg-slate-100 rounded-2xl animate-pulse" />;
 
