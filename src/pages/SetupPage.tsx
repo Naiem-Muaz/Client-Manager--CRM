@@ -12,7 +12,7 @@ import {
 import { UsersTab, HMRCTab, WorkflowTab, RiskTab } from '../components/settings/SettingsTabs';
 import { FirmSettingsTab } from '../components/settings/FirmSettingsTab';
 import { SponsorComplianceTab } from '../components/sponsor/SponsorComplianceTab';
-import { TeamAttendance } from '../components/hr/TeamAttendance';
+import { TeamTime } from '../components/hr/TeamTime';
 import { useAuth } from '../context/AuthContext';
 
 export function SetupPage() {
@@ -71,7 +71,7 @@ export function SetupPage() {
                 {activeTab === 'workflow' && <WorkflowTab />}
                 {activeTab === 'risk' && <RiskTab />}
                 {activeTab === 'sponsor' && isSuperAdmin && <SponsorComplianceTab />}
-                {activeTab === 'attendance' && isSuperAdmin && <TeamAttendance />}
+                {activeTab === 'attendance' && isSuperAdmin && <TeamTime />}
             </div>
         </div>
     );

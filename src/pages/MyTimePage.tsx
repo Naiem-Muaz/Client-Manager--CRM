@@ -1,5 +1,6 @@
 import React from 'react';
 import { MyAttendance } from '../components/hr/MyAttendance';
+import { MyLeave } from '../components/hr/MyLeave';
 
 /**
  * Staff self-service time page (/my-time). Reachable by any signed-in staff member
@@ -14,7 +15,10 @@ export default function MyTimePage() {
         <p className="text-slate-500 text-sm mt-0.5">Clock in and out, and track your hours.</p>
       </div>
       <MyAttendance />
-      {/* chunk 2: <MyLeave /> */}
+      <div className="pt-2">
+        <h2 className="text-lg font-bold text-[#0F1E3A] mb-3">My leave</h2>
+        <MyLeave />
+      </div>
     </div>
   );
 }
