@@ -22,6 +22,15 @@ export function useTeamAttendance(date?: string) {
   const { data, error, isLoading, mutate } = useSWR<AttendanceSegment[]>(`${BASE}/attendance/team${date ? `?date=${date}` : ''}`, fetcher);
   return { segments: (data || []) as AttendanceSegment[], isLoading, isError: error, mutate };
 }
+// "Clocked in now" — open segments regardless of date (refreshes on an interval so
+// durations stay live). open_hours flags a likely-forgotten clock-out.
+export function useOpenAttendance() {
+  const { data, error, isLoading, mutate } = useSWR<(AttendanceSegment & { open_hours: number })[]>(`${BASE}/attendance/open`, fetcher, { refreshInterval: 60_000 });
+  return { open: (data || []) as (AttendanceSegment & { open_hours: number })[], isLoading, isError: error, mutate };
+}
+export async function closeSegment(id: string, clockOutAt?: string) {
+  return (await NextGenAPI.patch(`${BASE}/attendance/${id}/close`, clockOutAt ? { clockOutAt } : {})).data;
+}
 
 // ── leave (chunk 2) ──────────────────────────────────────────────────────────
 export interface LeaveRequest { id: string; user_id: string; start_date: string; end_date: string; leave_type: string; status: string; half_day: boolean; reason?: string; approved_by?: string; email?: string; }
