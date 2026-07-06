@@ -7,7 +7,7 @@ import { fmtDate, fmtMoney, VISA_ROUTES, PAY_FREQUENCIES, WEEKDAY_LABELS, pretti
  * create form and the detail edit view so they never drift. Grouped into the
  * Appendix-D sections.
  */
-export type FieldType = 'text' | 'date' | 'number' | 'money' | 'bool' | 'select' | 'weekdays' | 'textarea' | 'staff_user';
+export type FieldType = 'text' | 'date' | 'number' | 'money' | 'bool' | 'select' | 'weekdays' | 'textarea' | 'staff_user' | 'monitor_start';
 export interface StaffOption { id: string; name: string; email: string }
 export interface FieldDef { k: string; label?: string; type?: FieldType; opts?: readonly string[]; span?: 1 | 2; placeholder?: string; help?: string }
 export interface Section { id: string; title: string; icon: any; blurb?: string; fields: FieldDef[] }
@@ -68,6 +68,7 @@ export const SECTIONS: Section[] = [
     { k: 'rosterType', label: 'Roster type', type: 'select', opts: ['fixed', 'variable'] },
     { k: 'worksBankHolidays', label: 'Works bank holidays', type: 'bool' },
     { k: 'contractedWeekdays', label: 'Contracted days (fixed pattern)', type: 'weekdays', span: 2 },
+    { k: 'attendanceMonitoringStartDate', label: 'Attendance monitoring start', type: 'monitor_start', span: 2, help: 'When set, a rostered day before today with no clock-in and no approved leave becomes an unauthorised absence (feeds the >10-day breach). Requires a linked, clocking CRM user. Blank = off.' },
   ] },
   { id: 'location', title: 'Location & contact', icon: MapPin, fields: [
     { k: 'homeAddressLine1', label: 'Home address line 1', span: 2 },
@@ -105,6 +106,23 @@ export function FieldInput({ f, value, onChange, staffOptions }: { f: FieldDef; 
         <option value="">— Not linked —</option>
         {(staffOptions || []).map(o => <option key={o.id} value={o.id}>{o.name} ({o.email})</option>)}
       </select>
+    );
+  }
+  if (f.type === 'monitor_start') {
+    const today = new Date().toISOString().slice(0, 10);
+    const v = value ? String(value).slice(0, 10) : '';
+    const isPast = v && v < today;
+    return (
+      <div>
+        <div className="flex items-center gap-2">
+          <input type="date" value={v} onChange={e => onChange(e.target.value || null)} className={field} />
+          {!v
+            ? <button type="button" onClick={() => onChange(today)} className="whitespace-nowrap px-2.5 py-2 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-100 rounded-lg hover:bg-blue-100">Start today</button>
+            : <button type="button" onClick={() => onChange(null)} className="whitespace-nowrap px-2.5 py-2 text-xs font-medium text-slate-500 hover:bg-slate-100 rounded-lg">Turn off</button>}
+        </div>
+        {!v && <p className="text-[11px] text-slate-400 mt-1">Off — no attendance-derived absences.</p>}
+        {isPast && <p className="text-[11px] text-amber-600 mt-1">⚠ Back-dating can flag days before the worker was set up to clock in — prefer today.</p>}
+      </div>
     );
   }
   if (f.type === 'bool') {
@@ -154,6 +172,7 @@ export function FieldValue({ f, value, staffOptions }: { f: FieldDef; value: any
     const m = (staffOptions || []).find(o => o.id === value);
     return <span className="text-sm text-slate-900">{m ? `${m.name} (${m.email})` : String(value).slice(0, 8)}</span>;
   }
+  if (f.type === 'monitor_start') return value ? <span className="text-sm text-slate-900 tabular-nums">{fmtDate(String(value).slice(0, 10))}</span> : <span className="text-slate-400 text-sm">Off</span>;
   if (f.type === 'bool') return <span className={`text-sm font-medium ${value ? 'text-slate-900' : 'text-slate-400'}`}>{value ? 'Yes' : 'No'}</span>;
   if (f.type === 'weekdays') return <span className="text-sm text-slate-900">{Array.isArray(value) && value.length ? WEEKDAY_LABELS.filter(([, n]) => value.includes(n)).map(([d]) => d).join(', ') : empty}</span>;
   if (f.type === 'date') return <span className="text-sm text-slate-900 tabular-nums">{value ? fmtDate(value) : empty}</span>;
