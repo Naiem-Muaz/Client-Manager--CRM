@@ -54,6 +54,11 @@ export function useRoster(params?: { userId?: string; from?: string; to?: string
   return { roster: (data || []) as any[], isLoading, isError: error, mutate };
 }
 export async function upsertRoster(days: any[]) { return (await NextGenAPI.post(`${BASE}/roster`, { days })).data; }
+export function useMyRoster(from?: string, to?: string) {
+  const q = new URLSearchParams(Object.entries({ from, to }).filter(([, v]) => v) as any).toString();
+  const { data, error, isLoading, mutate } = useSWR(`${BASE}/roster/me${q ? `?${q}` : ''}`, fetcher);
+  return { roster: (data || []) as any[], isLoading, isError: error as any, mutate };
+}
 export function useStaff() {
   const { data, error, isLoading, mutate } = useSWR(`${BASE}/staff`, fetcher);
   return { staff: (data || []) as any[], isLoading, isError: error, mutate };

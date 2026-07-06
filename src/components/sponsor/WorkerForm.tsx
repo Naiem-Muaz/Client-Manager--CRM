@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { SECTIONS, FieldInput, labelFor } from './fields';
+import { SECTIONS, FieldInput, labelFor, StaffOption } from './fields';
 
 /**
  * Shared sectioned worker form — used by both "Add worker" (empty) and the detail
  * Edit view (prefilled). One config, so create and edit never drift.
  */
-export function WorkerForm({ value, onChange }: { value: Record<string, any>; onChange: (k: string, v: any) => void }) {
+export function WorkerForm({ value, onChange, staffOptions }: { value: Record<string, any>; onChange: (k: string, v: any) => void; staffOptions?: StaffOption[] }) {
   const [active, setActive] = useState(SECTIONS[0].id);
   const jump = (id: string) => { setActive(id); document.getElementById(`sec-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
 
@@ -46,7 +46,7 @@ export function WorkerForm({ value, onChange }: { value: Record<string, any>; on
                 {s.fields.map(f => (
                   <div key={f.k} className={f.span === 2 ? 'sm:col-span-2' : ''}>
                     <label className="block text-xs font-medium text-slate-500 mb-1.5">{labelFor(f)}{f.k === 'fullName' && <span className="text-rose-500"> *</span>}</label>
-                    <FieldInput f={f} value={value[f.k]} onChange={v => onChange(f.k, v)} />
+                    <FieldInput f={f} value={value[f.k]} onChange={v => onChange(f.k, v)} staffOptions={staffOptions} />
                     {f.help && <p className="text-[11px] text-slate-400 mt-1">{f.help}</p>}
                   </div>
                 ))}

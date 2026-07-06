@@ -5,17 +5,21 @@ import { errMsg } from '../../lib/errMsg';
 import { fmtDate, fmtMoney, tierChipCls, salaryChip, chipBase, prettify } from './format';
 import { SECTIONS, FieldValue, EDITABLE_KEYS, labelFor } from './fields';
 import { WorkerForm } from './WorkerForm';
+import { useTeamMembers } from '../../hooks/useTeam';
 import { SponsorDocuments } from './SponsorDocuments';
 import { SponsorAbsences } from './SponsorAbsences';
 import { SponsorPayRecords } from './SponsorPayRecords';
-import { SponsorRoster } from './SponsorRoster';
 import { SponsorSmsReports } from './SponsorSmsReports';
 
-const SUB_TABS = ['Documents', 'Absences', 'Pay records', 'Roster', 'SMS reports'];
+// Roster is now managed team-wide in Team Attendance → Roster (hr_core.roster_days),
+// keyed by the worker's linked CRM user — no per-worker sponsor roster tab.
+const SUB_TABS = ['Documents', 'Absences', 'Pay records', 'SMS reports'];
 const initials = (n?: string) => (n || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();
 
 export function WorkerDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const { worker: w, isLoading, mutate } = useSponsorWorker(id);
+  const { members } = useTeamMembers();
+  const staffOptions = members.filter(m => m.status !== 'pending').map(m => ({ id: m.id, name: m.name, email: m.email }));
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Record<string, any>>({});
   const [saving, setSaving] = useState(false);
@@ -93,7 +97,7 @@ export function WorkerDetail({ id, onBack }: { id: string; onBack: () => void })
       {/* record: edit form or read-only section cards */}
       {editing ? (
         <>
-          <WorkerForm value={form} onChange={set} />
+          <WorkerForm value={form} onChange={set} staffOptions={staffOptions} />
           {error && <p className="text-sm text-rose-600">{error}</p>}
         </>
       ) : (
@@ -110,7 +114,7 @@ export function WorkerDetail({ id, onBack }: { id: string; onBack: () => void })
                   {s.fields.map(f => (
                     <div key={f.k} className={`flex flex-col gap-0.5 ${f.span === 2 || f.type === 'textarea' ? 'sm:col-span-2' : ''}`}>
                       <dt className="text-[11px] text-slate-400">{labelFor(f)}</dt>
-                      <dd><FieldValue f={f} value={w[f.k]} /></dd>
+                      <dd><FieldValue f={f} value={w[f.k]} staffOptions={staffOptions} /></dd>
                     </div>
                   ))}
                 </dl>
@@ -130,7 +134,6 @@ export function WorkerDetail({ id, onBack }: { id: string; onBack: () => void })
         {sub === 'Documents' && <SponsorDocuments workerId={id} />}
         {sub === 'Absences' && <SponsorAbsences worker={w} onChanged={mutate} />}
         {sub === 'Pay records' && <SponsorPayRecords worker={w} onChanged={mutate} />}
-        {sub === 'Roster' && <SponsorRoster worker={w} onChanged={mutate} />}
         {sub === 'SMS reports' && <SponsorSmsReports worker={w} onChanged={mutate} />}
       </div>
     </div>

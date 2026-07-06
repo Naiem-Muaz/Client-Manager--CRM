@@ -7,7 +7,8 @@ import { fmtDate, fmtMoney, VISA_ROUTES, PAY_FREQUENCIES, WEEKDAY_LABELS, pretti
  * create form and the detail edit view so they never drift. Grouped into the
  * Appendix-D sections.
  */
-export type FieldType = 'text' | 'date' | 'number' | 'money' | 'bool' | 'select' | 'weekdays' | 'textarea';
+export type FieldType = 'text' | 'date' | 'number' | 'money' | 'bool' | 'select' | 'weekdays' | 'textarea' | 'staff_user';
+export interface StaffOption { id: string; name: string; email: string }
 export interface FieldDef { k: string; label?: string; type?: FieldType; opts?: readonly string[]; span?: 1 | 2; placeholder?: string; help?: string }
 export interface Section { id: string; title: string; icon: any; blurb?: string; fields: FieldDef[] }
 
@@ -26,6 +27,7 @@ export const labelFor = (f: FieldDef): string => f.label ?? humanise(f.k);
 export const SECTIONS: Section[] = [
   { id: 'identity', title: 'Identity', icon: User, blurb: 'Who the worker is', fields: [
     { k: 'fullName', label: 'Full name', span: 2 },
+    { k: 'staffUserId', label: 'Linked CRM user', type: 'staff_user', span: 2, help: 'Links to their CRM login so clock-in/out and approved leave feed compliance.' },
     { k: 'nationality', label: 'Nationality' },
     { k: 'dateOfBirth', label: 'Date of birth', type: 'date' },
     { k: 'niNumber', label: 'NI number' },
@@ -96,7 +98,15 @@ export const EDITABLE_KEYS = SECTIONS.flatMap(s => s.fields.map(f => f.k));
 // ── input surface (shared) ───────────────────────────────────────────────────
 export const field = 'w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition-shadow';
 
-export function FieldInput({ f, value, onChange }: { f: FieldDef; value: any; onChange: (v: any) => void }) {
+export function FieldInput({ f, value, onChange, staffOptions }: { f: FieldDef; value: any; onChange: (v: any) => void; staffOptions?: StaffOption[] }) {
+  if (f.type === 'staff_user') {
+    return (
+      <select value={value ?? ''} onChange={e => onChange(e.target.value || null)} className={field}>
+        <option value="">— Not linked —</option>
+        {(staffOptions || []).map(o => <option key={o.id} value={o.id}>{o.name} ({o.email})</option>)}
+      </select>
+    );
+  }
   if (f.type === 'bool') {
     return (
       <button type="button" role="switch" aria-checked={!!value} onClick={() => onChange(!value)}
@@ -137,8 +147,13 @@ export function FieldInput({ f, value, onChange }: { f: FieldDef; value: any; on
   return <input type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'} value={value ?? ''} placeholder={f.placeholder} onChange={e => onChange(e.target.value)} className={f.type === 'number' ? `${field} tabular-nums` : field} />;
 }
 
-export function FieldValue({ f, value }: { f: FieldDef; value: any }) {
+export function FieldValue({ f, value, staffOptions }: { f: FieldDef; value: any; staffOptions?: StaffOption[] }) {
   const empty = <span className="text-slate-300">Not set</span>;
+  if (f.type === 'staff_user') {
+    if (!value) return <span className="text-slate-400 text-sm">Not linked</span>;
+    const m = (staffOptions || []).find(o => o.id === value);
+    return <span className="text-sm text-slate-900">{m ? `${m.name} (${m.email})` : String(value).slice(0, 8)}</span>;
+  }
   if (f.type === 'bool') return <span className={`text-sm font-medium ${value ? 'text-slate-900' : 'text-slate-400'}`}>{value ? 'Yes' : 'No'}</span>;
   if (f.type === 'weekdays') return <span className="text-sm text-slate-900">{Array.isArray(value) && value.length ? WEEKDAY_LABELS.filter(([, n]) => value.includes(n)).map(([d]) => d).join(', ') : empty}</span>;
   if (f.type === 'date') return <span className="text-sm text-slate-900 tabular-nums">{value ? fmtDate(value) : empty}</span>;
