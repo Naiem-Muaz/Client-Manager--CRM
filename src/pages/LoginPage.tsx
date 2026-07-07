@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { NextGenAPI } from '../api/NextGenAPI';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { Building2 } from 'lucide-react';
 
 // TODO: Migrate to Supabase auth to enable shared sessions
@@ -54,6 +54,12 @@ export function LoginPage() {
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
           <form className="space-y-6" onSubmit={handleLogin}>
+            {/* Post-reset notice, passed via navigate state from ResetPasswordPage. */}
+            {(location.state?.notice as string) && (
+              <div className="bg-green-50 text-green-800 p-3 rounded-md text-sm">
+                {location.state.notice}
+              </div>
+            )}
             {(error as string) && (
               <div className="bg-red-50 text-red-700 p-3 rounded-md text-sm cursor-text">
                 {error}
@@ -74,7 +80,12 @@ export function LoginPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700">Password</label>
+              <div className="flex items-center justify-between">
+                <label className="block text-sm font-medium text-gray-700">Password</label>
+                <Link to="/forgot-password" className="text-sm font-medium text-indigo-600 hover:text-indigo-500">
+                  Forgot password?
+                </Link>
+              </div>
               <div className="mt-1">
                 <input
                   type="password"

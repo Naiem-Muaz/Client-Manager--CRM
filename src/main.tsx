@@ -22,6 +22,8 @@ import { MTDCommandCentre } from "./pages/MTDCommandCentre";
 import MyTimePage from "./pages/MyTimePage";
 import { SigningPage } from "./pages/SigningPage";
 import { LoginPage } from "./pages/LoginPage";
+import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
+import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 import { AcceptInvitePage } from "./pages/AcceptInvitePage";
 import { AuthProvider, RequireAuth } from "./context/AuthContext";
 
@@ -58,6 +60,8 @@ function App() {
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/accept-invite" element={<AcceptInvitePage />} />
           <Route path="/sign/:token" element={<SigningPage />} />
           <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
