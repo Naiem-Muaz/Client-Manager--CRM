@@ -13,6 +13,12 @@ import {
 
 type GroupBy = 'week' | 'assignee' | 'client';
 type ViewMode = 'list' | 'calendar';
+type DatasetView = 'active' | 'done';
+
+// The status chips are context-sensitive to the Active/Done toggle: Active shows
+// the not-done statuses, Done shows the done ones — so a chip can never select a
+// status that's absent from the current view (no contradictory / empty result).
+const NOT_DONE_STATUSES: DeadlineStatus[] = STATUS_ORDER.filter((s) => !DONE_STATUSES.includes(s));
 
 export function DeadlinesPage() {
   const [authority, setAuthority] = useState<string>('');
@@ -24,9 +30,11 @@ export function DeadlinesPage() {
   const [groupBy, setGroupBy] = useState<GroupBy>('week');   // default Week (capacity view)
   const [view, setView] = useState<ViewMode>('list');        // default List (denser)
 
+  // NOTE: status is filtered CLIENT-SIDE (not sent to the server) so the fetched
+  // set is the full partition — the Active/Done counts stay accurate and the chips
+  // narrow within the already-partitioned view, never fighting the split.
   const filters: PracticeFilters = {
     authority: authority || undefined,
-    status: statuses,
     assignee: assignee || undefined,
     overdue: overdueOnly,
     from: from || undefined,
@@ -37,12 +45,30 @@ export function DeadlinesPage() {
   const { rollup } = useCoverageRollup();
   const { members } = useTeamMembers();
 
-  // Client-side split (independent of the status chips): done items drop out of
-  // the active work list into a collapsed section, so a completed current-period
-  // deadline stops cluttering while next period's instance stays in 'upcoming'.
+  // Client-side split (independent of the status chips): done items are kept out
+  // of the active work list — the Active/Done toggle below decides which set the
+  // list/calendar shows, so a completed current-period deadline stops cluttering
+  // 'Active' while next period's instance stays in 'upcoming'.
   const { active, done } = useMemo(() => partitionDone(rows), [rows]);
-  const groups = useMemo(() => buildActiveGroups(active, groupBy), [active, groupBy]);
-  const [doneOpen, setDoneOpen] = useState(false);
+  const [dataset, setDataset] = useState<DatasetView>('active');   // Active vs Done rows
+
+  // Chips filter client-side WITHIN the current view's partition. The chip set is
+  // scoped to the view (not-done vs done), so `statuses` can only ever hold codes
+  // valid for the current partition.
+  const shownActive = useMemo(
+    () => (statuses.length ? active.filter((d) => statuses.includes(d.status)) : active),
+    [active, statuses],
+  );
+  const shownDone = useMemo(
+    () => (statuses.length ? done.filter((d) => statuses.includes(d.status)) : done),
+    [done, statuses],
+  );
+  const groups = useMemo(() => buildActiveGroups(shownActive, groupBy), [shownActive, groupBy]);
+
+  // Switching Active<->Done RESETS the chip selection so a code chosen in one view
+  // can't linger and filter the other to empty (the two chip sets are disjoint).
+  const switchDataset = (d: DatasetView) => { setDataset(d); setStatuses([]); };
+
   const clearFilters = () => { setAuthority(''); setStatuses([]); setAssignee(''); setOverdueOnly(false); setFrom(''); setTo(''); };
   const hasFilters = authority || statuses.length || assignee || overdueOnly || from || to;
 
@@ -63,6 +89,14 @@ export function DeadlinesPage() {
         <div className="p-4 border-b border-slate-200 space-y-3">
           <div className="flex flex-wrap items-center gap-3">
             <Toggle label="Group" value={groupBy} onChange={(v) => setGroupBy(v as GroupBy)} options={[['week', 'Week'], ['assignee', 'Assignee'], ['client', 'Client']]} />
+            {/* Active / Done dataset toggle — LIST-view only (calendar shows everything).
+                Counts show each set's full size without switching. */}
+            {view === 'list' && (
+              <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
+                <button onClick={() => switchDataset('active')} className={`px-3 py-1 rounded-md text-sm font-medium ${dataset === 'active' ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`}>Active ({active.length})</button>
+                <button onClick={() => switchDataset('done')} className={`px-3 py-1 rounded-md text-sm font-medium ${dataset === 'done' ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`}>Done ({done.length})</button>
+              </div>
+            )}
             <div className="ml-auto flex items-center gap-1 bg-slate-100 rounded-lg p-1">
               <button onClick={() => setView('list')} className={`px-3 py-1 rounded-md text-sm font-medium flex items-center gap-1 ${view === 'list' ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`}><ListIcon size={14} /> List</button>
               <button onClick={() => setView('calendar')} className={`px-3 py-1 rounded-md text-sm font-medium flex items-center gap-1 ${view === 'calendar' ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`}><CalendarDays size={14} /> Calendar</button>
@@ -86,18 +120,22 @@ export function DeadlinesPage() {
             </label>
             {hasFilters && <button onClick={clearFilters} className="text-sm text-blue-600 hover:underline">Clear</button>}
           </div>
-          <div className="flex flex-wrap gap-1.5">
-            {STATUS_ORDER.map((s) => {
-              const on = statuses.includes(s);
-              return (
-                <button
-                  key={s}
-                  onClick={() => setStatuses((prev) => on ? prev.filter((x) => x !== s) : [...prev, s])}
-                  className={`px-2 py-0.5 rounded-full text-xs font-medium border ${on ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'}`}
-                >{STATUS_LABELS[s]}</button>
-              );
-            })}
-          </div>
+          {/* Status chips — LIST-view only, and context-sensitive to the toggle:
+              Active shows the not-done statuses, Done shows the done statuses. */}
+          {view === 'list' && (
+            <div className="flex flex-wrap gap-1.5">
+              {(dataset === 'active' ? NOT_DONE_STATUSES : DONE_STATUSES).map((s) => {
+                const on = statuses.includes(s);
+                return (
+                  <button
+                    key={s}
+                    onClick={() => setStatuses((prev) => on ? prev.filter((x) => x !== s) : [...prev, s])}
+                    className={`px-2 py-0.5 rounded-full text-xs font-medium border ${on ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'}`}
+                  >{STATUS_LABELS[s]}</button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {isLoading ? (
@@ -106,17 +144,20 @@ export function DeadlinesPage() {
           <div className="p-12 text-center text-red-500">Couldn't load deadlines.</div>
         ) : rows.length === 0 ? (
           <div className="p-12 text-center text-slate-400">No deadlines match these filters.</div>
-        ) : view === 'list' ? (
-          <>
-            {groups.length > 0 ? (
-              <ListView groups={groups} groupBy={groupBy} />
-            ) : (
-              <div className="p-10 text-center text-slate-400 text-sm">No active deadlines — everything here is done or filtered out.</div>
-            )}
-            <DoneSection rows={done} open={doneOpen} onToggle={() => setDoneOpen((o) => !o)} />
-          </>
-        ) : (
+        ) : view === 'calendar' ? (
+          // Calendar always shows EVERYTHING (active + done) — the Active/Done
+          // toggle is a list-only control and does not affect the calendar.
           <CalendarView rows={rows} />
+        ) : dataset === 'active' ? (
+          groups.length > 0 ? (
+            <ListView groups={groups} groupBy={groupBy} />
+          ) : (
+            <div className="p-10 text-center text-slate-400 text-sm">No active deadlines match — try a different chip or the Done view.</div>
+          )
+        ) : shownDone.length > 0 ? (
+          <DoneView rows={shownDone} />
+        ) : (
+          <div className="p-10 text-center text-slate-400 text-sm">No done deadlines match this filter.</div>
         )}
       </div>
     </div>
@@ -320,36 +361,35 @@ function CalendarView({ rows }: { rows: Deadline[] }) {
   );
 }
 
-// ── Done section (collapsed by default) ──────────────────────────────────────
-function DoneSection({ rows, open, onToggle }: { rows: Deadline[]; open: boolean; onToggle: () => void }) {
-  if (rows.length === 0) return null;
-  // Most-recently-due first; the days-overdue pill is meaningless once done, so we
-  // show the status label instead.
-  const ordered = [...rows].sort(byDateDesc);
+// ── Done view (the Done half of the Active/Done toggle) ───────────────────────
+// Most-recently-completed first (completed_at desc); rows without a completion
+// stamp (e.g. submitted / not_applicable) fall below, ordered by due date desc.
+// The days-overdue pill is meaningless once done, so we show the status label.
+const byDoneRecency = (a: Deadline, b: Deadline) => {
+  const ca = a.completed_at ?? '';
+  const cb = b.completed_at ?? '';
+  if (ca && cb) return cb.localeCompare(ca);   // both completed → most recent first
+  if (ca !== cb) return ca ? -1 : 1;           // completed ones ahead of un-stamped
+  return b.statutory_due_date.localeCompare(a.statutory_due_date); // neither → due date desc
+};
+
+function DoneView({ rows }: { rows: Deadline[] }) {
+  const ordered = [...rows].sort(byDoneRecency);
   return (
-    <div className="border-t border-slate-200">
-      <button onClick={onToggle} className="w-full px-5 py-3 flex items-center gap-2 hover:bg-slate-50 text-left bg-slate-50/40">
-        {open ? <ChevronDown size={16} className="text-slate-400" /> : <ChevronRight size={16} className="text-slate-400" />}
-        <span className="text-sm font-bold text-slate-500">Done</span>
-        <span className="text-xs text-slate-400">· {rows.length}</span>
-      </button>
-      {open && (
-        <table className="w-full text-left text-sm">
-          <tbody className="divide-y divide-slate-100">
-            {ordered.map((d) => (
-              <tr key={d.id} className="text-slate-500 hover:bg-slate-50">
-                <td className="px-5 py-2.5 w-1/4">
-                  <Link to={`/clients/${d.client_id}`} className="font-medium text-slate-600 hover:text-blue-600">{d.client_name ?? '—'}</Link>
-                </td>
-                <td className="px-5 py-2.5">{d.deadline_type.name}</td>
-                <td className="px-5 py-2.5 whitespace-nowrap">{formatDateOnly(d.statutory_due_date)}</td>
-                <td className="px-5 py-2.5 text-xs whitespace-nowrap"><span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">{STATUS_LABELS[d.status]}</span></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
+    <table className="w-full text-left text-sm">
+      <tbody className="divide-y divide-slate-100">
+        {ordered.map((d) => (
+          <tr key={d.id} className="text-slate-500 hover:bg-slate-50">
+            <td className="px-5 py-2.5 w-1/4">
+              <Link to={`/clients/${d.client_id}`} className="font-medium text-slate-600 hover:text-blue-600">{d.client_name ?? '—'}</Link>
+            </td>
+            <td className="px-5 py-2.5">{d.deadline_type.name}</td>
+            <td className="px-5 py-2.5 whitespace-nowrap">{formatDateOnly(d.statutory_due_date)}</td>
+            <td className="px-5 py-2.5 text-xs whitespace-nowrap"><span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">{STATUS_LABELS[d.status]}</span></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
