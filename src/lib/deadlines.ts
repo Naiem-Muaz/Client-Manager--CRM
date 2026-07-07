@@ -102,6 +102,12 @@ export const STATUS_ORDER: DeadlineStatus[] = [
 ];
 export const COMPLETED_STATUSES: DeadlineStatus[] = ['filed', 'confirmed', 'not_applicable'];
 
+// UI-only "Done" partition for the Deadlines list collapse. DELIBERATELY distinct
+// from COMPLETED_STATUSES (a backend-terminal set other code relies on): here
+// 'submitted' also counts as done for the accountant's list view, so a submitted
+// item drops out of the active work list. Do not merge the two.
+export const DONE_STATUSES: DeadlineStatus[] = ['submitted', 'filed', 'confirmed', 'not_applicable'];
+
 // ── Authority grouping (Companies House first, then HMRC) ─────────────────────
 export const AUTHORITY_LABELS: Record<Authority, string> = {
   companies_house: 'Companies House', hmrc: 'HMRC',

@@ -7,7 +7,7 @@ import {
 import { usePracticeDeadlines, useCoverageRollup, PracticeFilters, CoverageRollup } from '../hooks/useDeadlineEngine';
 import { useTeamMembers } from '../hooks/useTeam';
 import {
-  Deadline, formatDateOnly, daysPill, STATUS_LABELS, STATUS_ORDER, DeadlineStatus,
+  Deadline, formatDateOnly, daysPill, STATUS_LABELS, STATUS_ORDER, DeadlineStatus, DONE_STATUSES,
   AUTHORITY_LABELS, AUTHORITY_ORDER, Authority, weekStartISO, reasonMeta,
 } from '../lib/deadlines';
 
@@ -37,7 +37,12 @@ export function DeadlinesPage() {
   const { rollup } = useCoverageRollup();
   const { members } = useTeamMembers();
 
-  const groups = useMemo(() => groupRows(rows, groupBy), [rows, groupBy]);
+  // Client-side split (independent of the status chips): done items drop out of
+  // the active work list into a collapsed section, so a completed current-period
+  // deadline stops cluttering while next period's instance stays in 'upcoming'.
+  const { active, done } = useMemo(() => partitionDone(rows), [rows]);
+  const groups = useMemo(() => buildActiveGroups(active, groupBy), [active, groupBy]);
+  const [doneOpen, setDoneOpen] = useState(false);
   const clearFilters = () => { setAuthority(''); setStatuses([]); setAssignee(''); setOverdueOnly(false); setFrom(''); setTo(''); };
   const hasFilters = authority || statuses.length || assignee || overdueOnly || from || to;
 
@@ -102,7 +107,14 @@ export function DeadlinesPage() {
         ) : rows.length === 0 ? (
           <div className="p-12 text-center text-slate-400">No deadlines match these filters.</div>
         ) : view === 'list' ? (
-          <ListView groups={groups} groupBy={groupBy} />
+          <>
+            {groups.length > 0 ? (
+              <ListView groups={groups} groupBy={groupBy} />
+            ) : (
+              <div className="p-10 text-center text-slate-400 text-sm">No active deadlines — everything here is done or filtered out.</div>
+            )}
+            <DoneSection rows={done} open={doneOpen} onToggle={() => setDoneOpen((o) => !o)} />
+          </>
         ) : (
           <CalendarView rows={rows} />
         )}
@@ -308,21 +320,102 @@ function CalendarView({ rows }: { rows: Deadline[] }) {
   );
 }
 
+// ── Done section (collapsed by default) ──────────────────────────────────────
+function DoneSection({ rows, open, onToggle }: { rows: Deadline[]; open: boolean; onToggle: () => void }) {
+  if (rows.length === 0) return null;
+  // Most-recently-due first; the days-overdue pill is meaningless once done, so we
+  // show the status label instead.
+  const ordered = [...rows].sort(byDateDesc);
+  return (
+    <div className="border-t border-slate-200">
+      <button onClick={onToggle} className="w-full px-5 py-3 flex items-center gap-2 hover:bg-slate-50 text-left bg-slate-50/40">
+        {open ? <ChevronDown size={16} className="text-slate-400" /> : <ChevronRight size={16} className="text-slate-400" />}
+        <span className="text-sm font-bold text-slate-500">Done</span>
+        <span className="text-xs text-slate-400">· {rows.length}</span>
+      </button>
+      {open && (
+        <table className="w-full text-left text-sm">
+          <tbody className="divide-y divide-slate-100">
+            {ordered.map((d) => (
+              <tr key={d.id} className="text-slate-500 hover:bg-slate-50">
+                <td className="px-5 py-2.5 w-1/4">
+                  <Link to={`/clients/${d.client_id}`} className="font-medium text-slate-600 hover:text-blue-600">{d.client_name ?? '—'}</Link>
+                </td>
+                <td className="px-5 py-2.5">{d.deadline_type.name}</td>
+                <td className="px-5 py-2.5 whitespace-nowrap">{formatDateOnly(d.statutory_due_date)}</td>
+                <td className="px-5 py-2.5 text-xs whitespace-nowrap"><span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">{STATUS_LABELS[d.status]}</span></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 // ── grouping ─────────────────────────────────────────────────────────────────
 interface Group { key: string; label: string; rows: Deadline[]; }
-function groupRows(rows: Deadline[], groupBy: GroupBy): Group[] {
+
+// Ascending by statutory due date, client name as tiebreak (natural read order).
+const byDateAsc = (a: Deadline, b: Deadline) =>
+  a.statutory_due_date.localeCompare(b.statutory_due_date) || (a.client_name ?? '').localeCompare(b.client_name ?? '');
+// Descending by due date (most-recent first), client name tiebreak.
+const byDateDesc = (a: Deadline, b: Deadline) =>
+  b.statutory_due_date.localeCompare(a.statutory_due_date) || (a.client_name ?? '').localeCompare(b.client_name ?? '');
+
+/** Split fetched rows into active vs done — independent of the status filter chips. */
+function partitionDone(rows: Deadline[]): { active: Deadline[]; done: Deadline[] } {
+  const active: Deadline[] = [];
+  const done: Deadline[] = [];
+  for (const d of rows) (DONE_STATUSES.includes(d.status) ? done : active).push(d);
+  return { active, done };
+}
+
+/**
+ * Group + order the ACTIVE set.
+ *   week     : the CURRENT week (containing today) and later go in the upcoming
+ *              section, ascending; earlier weeks go in the overdue section,
+ *              descending (most-recent first). Section is decided per WEEK-KEY vs
+ *              this week's Monday — NOT per-row — so no week label appears twice.
+ *              Within a week, rows read ascending by due date. (The row-level
+ *              `overdue` boolean still drives the days-overdue PILL, so a past-due
+ *              row sitting in the current-week upcoming group still shows red.)
+ *   assignee : one group per assignee (label ASC); within a group, upcoming rows
+ *   client     (ascending) then overdue rows (descending) — the same
+ *              upcoming-before-overdue intent applied per bucket. [Assignee/Client
+ *              handling was under-specified in the brief; this is the chosen shape.]
+ */
+function buildActiveGroups(rows: Deadline[], groupBy: GroupBy): Group[] {
+  if (groupBy === 'week') {
+    // This week's Monday, via the SAME helper used for row week-keys, so the
+    // boundary compares like-for-like (ISO 'YYYY-MM-DD' strings sort correctly).
+    const currentWeek = weekStartISO(new Date().toISOString().slice(0, 10));
+    const map = new Map<string, Group>();
+    for (const d of rows) {
+      const wk = weekStartISO(d.statutory_due_date);
+      if (!map.has(wk)) map.set(wk, { key: wk, label: `Week of ${formatDateOnly(wk)}`, rows: [] });
+      map.get(wk)!.rows.push(d);
+    }
+    const arr = [...map.values()];
+    arr.forEach((g) => g.rows.sort(byDateAsc)); // within a week: ascending by due date
+    const upcoming = arr.filter((g) => g.key >= currentWeek).sort((a, b) => a.key.localeCompare(b.key));
+    const overdue = arr.filter((g) => g.key < currentWeek).sort((a, b) => b.key.localeCompare(a.key));
+    return [...upcoming, ...overdue];
+  }
+
   const map = new Map<string, Group>();
   for (const d of rows) {
-    let key: string, label: string;
-    if (groupBy === 'week') { key = weekStartISO(d.statutory_due_date); label = `Week of ${formatDateOnly(key)}`; }
-    else if (groupBy === 'assignee') { key = d.assignee_name ?? '~unassigned'; label = d.assignee_name ?? 'Unassigned'; }
-    else { key = d.client_id; label = d.client_name ?? 'Unknown client'; }
+    const key = groupBy === 'assignee' ? (d.assignee_name ?? '~unassigned') : d.client_id;
+    const label = groupBy === 'assignee' ? (d.assignee_name ?? 'Unassigned') : (d.client_name ?? 'Unknown client');
     if (!map.has(key)) map.set(key, { key, label, rows: [] });
     map.get(key)!.rows.push(d);
   }
   const arr = [...map.values()];
-  arr.forEach((g) => g.rows.sort((a, b) => a.statutory_due_date.localeCompare(b.statutory_due_date)));
-  if (groupBy === 'week') arr.sort((a, b) => a.key.localeCompare(b.key));
-  else arr.sort((a, b) => a.label.localeCompare(b.label));
+  arr.forEach((g) => {
+    const up = g.rows.filter((d) => !d.overdue).sort(byDateAsc);
+    const od = g.rows.filter((d) => d.overdue).sort(byDateDesc);
+    g.rows = [...up, ...od];
+  });
+  arr.sort((a, b) => a.label.localeCompare(b.label));
   return arr;
 }
