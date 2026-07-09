@@ -20,6 +20,8 @@ import { AuditPage } from "./pages/AuditPage";
 import { VerticalSlicePage } from "./pages/VerticalSlicePage";
 import { MTDCommandCentre } from "./pages/MTDCommandCentre";
 import MyTimePage from "./pages/MyTimePage";
+import { IncorporationsPage } from "./pages/IncorporationsPage";
+import { IncorporationWizardPage } from "./pages/IncorporationWizardPage";
 import { SigningPage } from "./pages/SigningPage";
 import { LoginPage } from "./pages/LoginPage";
 import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
@@ -82,6 +84,8 @@ function App() {
             <Route path="/setup" element={<SetupPage />} />
             <Route path="/vertical-slice" element={<VerticalSlicePage />} />
             <Route path="/mtd" element={<MTDCommandCentre />} />
+            <Route path="/incorporations" element={<IncorporationsPage />} />
+            <Route path="/incorporations/:id" element={<IncorporationWizardPage />} />
             <Route path="/my-time" element={<MyTimePage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>

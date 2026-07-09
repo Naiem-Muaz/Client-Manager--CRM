@@ -14,6 +14,7 @@ import {
   History,
   FileBarChart,
   CloudUpload,
+  Building2,
   Zap,
   ExternalLink,
   LogOut,
@@ -36,6 +37,8 @@ export function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
     { icon: ShieldAlert, label: 'Compliance', to: '/compliance' },
     { icon: Zap, label: 'MTD', to: '/mtd' },
     { icon: Users, label: 'Clients', to: '/clients' },
+    // Accountant/staff feature — the backend role-gates it; hide from client-portal users.
+    ...(user?.role !== 'client' ? [{ icon: Building2, label: 'Incorporations', to: '/incorporations' }] : []),
     { icon: FileText, label: 'Documents', to: '/documents' },
     { icon: CheckSquare, label: 'Tasks', to: '/work' },
     { icon: Clock, label: 'Deadlines', to: '/deadlines' },
