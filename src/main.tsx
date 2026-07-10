@@ -23,6 +23,7 @@ import MyTimePage from "./pages/MyTimePage";
 import { IncorporationsPage } from "./pages/IncorporationsPage";
 import { IncorporationWizardPage } from "./pages/IncorporationWizardPage";
 import { SigningPage } from "./pages/SigningPage";
+import { ProposalPage } from "./pages/ProposalPage";
 import { LoginPage } from "./pages/LoginPage";
 import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage";
@@ -66,6 +67,7 @@ function App() {
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/accept-invite" element={<AcceptInvitePage />} />
           <Route path="/sign/:token" element={<SigningPage />} />
+          <Route path="/proposal/:token" element={<ProposalPage />} />
           <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/clients" element={<ClientListPage />} />
