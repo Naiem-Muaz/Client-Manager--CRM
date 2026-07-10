@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+    PoundSterling,
     Users,
     Shield,
     Zap,
@@ -11,6 +12,7 @@ import {
 } from 'lucide-react';
 import { UsersTab, HMRCTab, WorkflowTab, RiskTab } from '../components/settings/SettingsTabs';
 import { FirmSettingsTab } from '../components/settings/FirmSettingsTab';
+import { ServiceCatalogueTab } from '../components/settings/ServiceCatalogueTab';
 import { SponsorComplianceTab } from '../components/sponsor/SponsorComplianceTab';
 import { TeamTime } from '../components/hr/TeamTime';
 import { useAuth } from '../context/AuthContext';
@@ -24,6 +26,7 @@ export function SetupPage() {
     // entirely for non-super-admins (backend also enforces super_admin + org-lock).
     const tabs = [
         { id: 'firm', label: 'Firm Settings', icon: Building2 },
+        { id: 'catalogue', label: 'Service Catalogue', icon: PoundSterling },
         { id: 'users', label: 'Users & Roles', icon: Users },
         { id: 'hmrc', label: 'HMRC Setup', icon: Shield },
         { id: 'workflow', label: 'Workflow Rules', icon: Zap },
@@ -66,6 +69,7 @@ export function SetupPage() {
             {/* Content Area */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 min-h-[500px]">
                 {activeTab === 'firm' && <FirmSettingsTab />}
+                {activeTab === 'catalogue' && <ServiceCatalogueTab />}
                 {activeTab === 'users' && <UsersTab />}
                 {activeTab === 'hmrc' && <HMRCTab />}
                 {activeTab === 'workflow' && <WorkflowTab />}

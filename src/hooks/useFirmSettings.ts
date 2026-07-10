@@ -13,6 +13,7 @@ export interface FirmSettings {
   practice_license_number: string | null;
   website: string | null;
   logo_url: string | null;
+  brand_accent_color: string | null;
 }
 
 const fetcher = (url: string) => NextGenAPI.get(url).then(r => r.data.data ?? r.data);

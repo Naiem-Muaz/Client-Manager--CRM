@@ -24,6 +24,8 @@ import { IncorporationsPage } from "./pages/IncorporationsPage";
 import { IncorporationWizardPage } from "./pages/IncorporationWizardPage";
 import { SigningPage } from "./pages/SigningPage";
 import { ProposalPage } from "./pages/ProposalPage";
+import { ProposalsPage } from "./pages/ProposalsPage";
+import { ProposalBuilderPage, NewProposalPage } from "./pages/ProposalBuilderPage";
 import { LoginPage } from "./pages/LoginPage";
 import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage";
@@ -86,6 +88,9 @@ function App() {
             <Route path="/setup" element={<SetupPage />} />
             <Route path="/vertical-slice" element={<VerticalSlicePage />} />
             <Route path="/mtd" element={<MTDCommandCentre />} />
+            <Route path="/proposals" element={<ProposalsPage />} />
+            <Route path="/proposals/new" element={<NewProposalPage />} />
+            <Route path="/proposals/:id" element={<ProposalBuilderPage />} />
             <Route path="/incorporations" element={<IncorporationsPage />} />
             <Route path="/incorporations/:id" element={<IncorporationWizardPage />} />
             <Route path="/my-time" element={<MyTimePage />} />

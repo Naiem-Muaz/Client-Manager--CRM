@@ -24,6 +24,7 @@ export function FirmSettingsTab() {
         name: form.name, address_line1: form.address_line1, address_line2: form.address_line2,
         city: form.city, postcode: form.postcode, phone: form.phone,
         email: form.email, practice_license_number: form.practice_license_number, website: form.website,
+        brand_accent_color: form.brand_accent_color || null,
       });
       await mutate(); setSaved(true);
     } catch (e: any) { setError(errMsg(e, 'Failed to save firm settings')); }
@@ -81,6 +82,20 @@ export function FirmSettingsTab() {
         <Labeled label="Phone"><input value={form.phone || ''} onChange={e => set('phone', e.target.value)} className={field} /></Labeled>
         <Labeled label="Email"><input type="email" value={form.email || ''} onChange={e => set('email', e.target.value)} placeholder="hello@taxxdigital.co.uk" className={field} /></Labeled>
         <Labeled label="Practice reference (ICAEW/ACCA)" full><input value={form.practice_license_number || ''} onChange={e => set('practice_license_number', e.target.value)} className={field} /></Labeled>
+        <Labeled label="Brand accent colour" full>
+          {/* ONE accent applied to a designed palette (proposal hero/totals/buttons) — not a theme editor. */}
+          <div className="flex items-center gap-3">
+            <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(form.brand_accent_color || '') ? form.brand_accent_color! : '#1a365d'}
+              onChange={e => set('brand_accent_color', e.target.value)}
+              className="h-9 w-12 rounded-lg border border-slate-200 cursor-pointer bg-white p-1" />
+            <input value={form.brand_accent_color || ''} onChange={e => set('brand_accent_color', e.target.value)}
+              placeholder="#1a365d (default navy)" className={`${field} font-mono max-w-[160px]`} />
+            <div className="flex-1 rounded-lg border border-slate-200 overflow-hidden">
+              <div className="h-2" style={{ background: /^#[0-9a-fA-F]{6}$/.test(form.brand_accent_color || '') ? form.brand_accent_color! : '#1a365d' }} />
+              <p className="px-3 py-1.5 text-[11px] text-slate-400">Live preview — proposal hero rule, totals and buttons use this.</p>
+            </div>
+          </div>
+        </Labeled>
       </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}

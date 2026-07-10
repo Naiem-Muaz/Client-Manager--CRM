@@ -46,7 +46,6 @@ export function ProposalPage() {
   const [phase, setPhase] = useState<'loading' | 'view' | 'accepted' | 'declined' | 'expired' | 'unavailable' | 'notfound' | 'error'>('loading');
   const [data, setData] = useState<Payload | null>(null);
   const [justAccepted, setJustAccepted] = useState<{ email: string } | null>(null);
-  const [view, setView] = useState<'monthly' | 'annual'>('monthly');
 
   const load = async () => {
     try {
@@ -68,8 +67,6 @@ export function ProposalPage() {
   useEffect(() => { load(); }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const accent = data?.firm?.accentColor && HEX_RE.test(data.firm.accentColor) ? data.firm.accentColor : NAVY;
-  const recurring = useMemo(() => (data?.items || []).filter(i => i.frequency !== 'one_off'), [data]);
-  const oneOff = useMemo(() => (data?.items || []).filter(i => i.frequency === 'one_off'), [data]);
 
   if (phase === 'loading') {
     return <Shell accent={NAVY}><div className="py-24 flex justify-center text-slate-400"><Loader2 size={22} className="animate-spin" /></div></Shell>;
@@ -94,24 +91,12 @@ export function ProposalPage() {
   const d = data!;
   return (
     <Shell accent={accent} firm={d.firm}>
-      {/* Hero */}
-      <header className="pt-10 pb-6">
-        {d.firm?.logoUrl
-          ? <img src={d.firm.logoUrl} alt={d.firm?.name || ''} className="h-10 sm:h-12 object-contain" />
-          : <p className="text-xl font-bold" style={{ color: NAVY }}>{d.firm?.name}</p>}
-        <div className="h-0.5 w-full mt-5 rounded-full" style={{ background: accent }} />
-        <p className="mt-7 text-[11px] font-semibold tracking-[0.2em]" style={{ color: accent }}>PROPOSAL</p>
-        <h1 className="mt-1.5 text-3xl sm:text-4xl font-bold text-slate-900 leading-tight">{d.title}</h1>
-        <p className="mt-2.5 text-slate-500">
-          Prepared for <span className="font-medium text-slate-700">{d.prospect?.name || 'you'}</span>
-          {d.prospect?.company && <> — {d.prospect.company}</>}
-        </p>
-        {d.validUntil && phase === 'view' && (
-          <p className="mt-1 text-xs text-slate-400 inline-flex items-center gap-1.5"><Clock size={12} />Valid until {fmtDate(d.validUntil)}</p>
-        )}
-      </header>
-
-      {phase === 'accepted' && (
+      <ProposalContent
+        d={d}
+        accent={accent}
+        showValidity={phase === 'view'}
+        pdfHref={d.hasPdf ? `${API_ROOT}/p/${token}/pdf` : null}
+        afterHero={phase === 'accepted' ? (
         <div className="mb-8 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 sm:p-6">
           <div className="flex items-start gap-3">
             <CheckCircle2 size={22} className="text-emerald-600 flex-shrink-0 mt-0.5" />
@@ -132,7 +117,50 @@ export function ProposalPage() {
             </div>
           </div>
         </div>
-      )}
+        ) : null}
+      />
+
+      {phase === 'view' && <AcceptPanel accent={accent} token={token!} firmName={d.firm?.name || ''} onAccepted={(email) => { setJustAccepted({ email }); setPhase('accepted'); }} onDeclined={() => setPhase('declined')} onStale={load} />}
+
+      <footer className="mt-12 pb-10 text-center text-xs text-slate-400">
+        {d.firm?.name} — this proposal is a summary of services and fees; formal terms follow in your engagement letter.
+      </footer>
+    </Shell>
+  );
+}
+
+/**
+ * The proposal body — hero, intro, service cards, fee summary w/ monthly/
+ * annual toggle, scope, PDF link. Exported so the BUILDER's preview renders
+ * the exact same component the prospect sees (a faithful preview by
+ * construction, not by imitation).
+ */
+export function ProposalContent({ d, accent, afterHero, pdfHref, showValidity }: {
+  d: Payload; accent: string; afterHero?: React.ReactNode; pdfHref?: string | null; showValidity?: boolean;
+}) {
+  const [view, setView] = useState<'monthly' | 'annual'>('monthly');
+  const recurring = useMemo(() => (d.items || []).filter(i => i.frequency !== 'one_off'), [d]);
+  const oneOff = useMemo(() => (d.items || []).filter(i => i.frequency === 'one_off'), [d]);
+  return (
+    <>
+      {/* Hero */}
+      <header className="pt-10 pb-6">
+        {d.firm?.logoUrl
+          ? <img src={d.firm.logoUrl} alt={d.firm?.name || ''} className="h-10 sm:h-12 object-contain" />
+          : <p className="text-xl font-bold" style={{ color: NAVY }}>{d.firm?.name}</p>}
+        <div className="h-0.5 w-full mt-5 rounded-full" style={{ background: accent }} />
+        <p className="mt-7 text-[11px] font-semibold tracking-[0.2em]" style={{ color: accent }}>PROPOSAL</p>
+        <h1 className="mt-1.5 text-3xl sm:text-4xl font-bold text-slate-900 leading-tight">{d.title}</h1>
+        <p className="mt-2.5 text-slate-500">
+          Prepared for <span className="font-medium text-slate-700">{d.prospect?.name || 'you'}</span>
+          {d.prospect?.company && <> — {d.prospect.company}</>}
+        </p>
+        {d.validUntil && showValidity && (
+          <p className="mt-1 text-xs text-slate-400 inline-flex items-center gap-1.5"><Clock size={12} />Valid until {fmtDate(d.validUntil)}</p>
+        )}
+      </header>
+
+      {afterHero}
 
       {/* Intro */}
       {d.introMd && <p className="text-[15px] leading-relaxed text-slate-700 whitespace-pre-line mb-8">{d.introMd}</p>}
@@ -212,18 +240,12 @@ export function ProposalPage() {
         </div>
       )}
 
-      {d.hasPdf && (
-        <a href={`${API_ROOT}/p/${token}/pdf`} className="mt-6 inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-700">
+      {pdfHref && (
+        <a href={pdfHref} className="mt-6 inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-700">
           <Download size={15} />Download as PDF
         </a>
       )}
-
-      {phase === 'view' && <AcceptPanel accent={accent} token={token!} firmName={d.firm?.name || ''} onAccepted={(email) => { setJustAccepted({ email }); setPhase('accepted'); }} onDeclined={() => setPhase('declined')} onStale={load} />}
-
-      <footer className="mt-12 pb-10 text-center text-xs text-slate-400">
-        {d.firm?.name} — this proposal is a summary of services and fees; formal terms follow in your engagement letter.
-      </footer>
-    </Shell>
+    </>
   );
 }
 

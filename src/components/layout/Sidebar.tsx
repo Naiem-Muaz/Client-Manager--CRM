@@ -4,6 +4,7 @@ import {
   LayoutDashboard,
   Users,
   ShieldAlert,
+  FileSignature,
   CheckSquare,
   Settings,
   ChevronLeft,
@@ -38,7 +39,10 @@ export function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
     { icon: Zap, label: 'MTD', to: '/mtd' },
     { icon: Users, label: 'Clients', to: '/clients' },
     // Accountant/staff feature — the backend role-gates it; hide from client-portal users.
-    ...(user?.role !== 'client' ? [{ icon: Building2, label: 'Incorporations', to: '/incorporations' }] : []),
+    ...(user?.role !== 'client' ? [
+      { icon: FileSignature, label: 'Proposals', to: '/proposals' },
+      { icon: Building2, label: 'Incorporations', to: '/incorporations' },
+    ] : []),
     { icon: FileText, label: 'Documents', to: '/documents' },
     { icon: CheckSquare, label: 'Tasks', to: '/work' },
     { icon: Clock, label: 'Deadlines', to: '/deadlines' },
