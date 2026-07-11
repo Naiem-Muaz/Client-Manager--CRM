@@ -265,7 +265,15 @@ export function ProposalBuilderPage() {
                   <textarea value={intro} onChange={e => { setIntro(e.target.value); touch(); }} rows={3} className={`${field} resize-none`} />
                 </Labelled>
                 <div className="grid grid-cols-2 gap-4">
-                  <Labelled label="Valid until"><input type="date" value={validUntil} onChange={e => { setValidUntil(e.target.value); touch(); }} className={field} /></Labelled>
+                  <Labelled label="Valid until" help={validUntil && !/^20\d{2}-/.test(validUntil) ? 'Check the year — enter it in full (e.g. 2027).' : undefined}>
+                    {/* min today + max +20y: an <input type=date> otherwise accepts a
+                        2-digit year (26 → 0026) that reads as instantly expired. */}
+                    <input type="date" value={validUntil}
+                      min={new Date().toISOString().slice(0, 10)}
+                      max={`${new Date().getUTCFullYear() + 20}-12-31`}
+                      onChange={e => { setValidUntil(e.target.value); touch(); }}
+                      className={`${field} ${validUntil && !/^20\d{2}-/.test(validUntil) ? 'border-amber-400 ring-1 ring-amber-200' : ''}`} />
+                  </Labelled>
                   <Labelled label="Discount %"><input type="number" min={0} max={100} step="0.01" value={discount} onChange={e => { setDiscount(e.target.value); touch(); }} placeholder="none" className={`${field} tabular-nums`} /></Labelled>
                 </div>
               </div>
