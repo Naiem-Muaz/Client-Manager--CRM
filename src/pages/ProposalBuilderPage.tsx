@@ -271,7 +271,7 @@ export function ProposalBuilderPage() {
               </div>
             </SectionCard>
 
-            <SectionCard title="Services" subtitle="From your catalogue — prices resolve server-side on save">
+            <SectionCard title="Services" subtitle="Each service's scope text becomes its own 'Scope of work' section on the proposal — 2–3 sentences per service reads best">
               <ItemsEditor items={items} setItems={(next) => { setItems(next); touch(); }} services={services} />
             </SectionCard>
 
@@ -307,7 +307,7 @@ export function ProposalBuilderPage() {
               </div>
               <div className="bg-slate-50 rounded-2xl shadow-2xl overflow-hidden" style={{ borderTop: `4px solid ${accent}` }} onClick={e => e.stopPropagation()}>
                 <div className="px-5 sm:px-8 pb-10">
-                  <ProposalContent d={previewPayload} accent={accent} showValidity />
+                  <ProposalContent d={previewPayload} accent={accent} showValidity showNextSteps />
                 </div>
               </div>
             </div>

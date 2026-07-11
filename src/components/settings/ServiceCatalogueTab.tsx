@@ -24,6 +24,24 @@ const EMPTY = {
   bands: [] as Band[], frequency: 'monthly' as const, default_scope_text: '',
 };
 
+/**
+ * Suggested scope copy for common services — this text becomes each service's
+ * own "Scope of work" section on the proposal, so it should read like a
+ * promise, not a label. Matched loosely on the service name/code.
+ */
+const SCOPE_SUGGESTIONS: Array<{ match: RegExp; text: string }> = [
+  { match: /account/i, text: 'We prepare your statutory year-end accounts from your records, walk you through the numbers in plain English before anything is filed, and submit them to Companies House and HMRC on time. You get a clear picture of how the business performed — not just a compliance document.' },
+  { match: /bookkeep/i, text: 'We keep your books current so you always know where you stand: transactions processed and categorised, bank accounts reconciled monthly, and queries chased while they\'re still fresh. Clean books mean faster year-ends, better decisions and no January surprises.' },
+  { match: /payroll/i, text: 'We run your payroll end to end: payslips, RTI submissions to HMRC, pension auto-enrolment, starters and leavers, and year-end P60s. Your team is paid correctly and on time, every time — you just approve the run.' },
+  { match: /vat/i, text: 'We prepare and file your VAT returns under Making Tax Digital, check you\'re on the best scheme for the business, and review the numbers for anything unusual before submission — so the return is right first time and there\'s nothing waiting to unwind later.' },
+  { match: /corporation tax|ct600|\bct\b/i, text: 'We prepare your corporation tax computation and CT600, claim every relief and allowance you\'re entitled to, and file with HMRC ahead of the deadline. You\'ll know your liability months before it\'s due — with time to plan for it.' },
+  { match: /self.?assessment|personal tax|\bsa\b/i, text: 'We prepare and file your personal Self Assessment return, make sure every allowable expense and relief is claimed, and tell you exactly what to pay and when. No forms, no HMRC portal wrestling — just a summary you can read in five minutes.' },
+  { match: /secretarial|confirmation/i, text: 'We keep your company\'s statutory records straight: the annual confirmation statement, register updates, share and officer changes filed correctly and on time — the housekeeping that keeps Companies House happy without you thinking about it.' },
+  { match: /management account/i, text: 'Monthly or quarterly management accounts that tell you what\'s actually happening: profit, cash, and the trends behind them, with a short commentary in plain English. The numbers you\'d want before making your next decision.' },
+];
+const suggestScopeFor = (name?: string, code?: string): string | null =>
+  SCOPE_SUGGESTIONS.find(s => s.match.test(`${name || ''} ${code || ''}`))?.text || null;
+
 export function ServiceCatalogueTab() {
   const { services, isLoading, mutate } = useCatalogue(false);
   const [editing, setEditing] = useState<Partial<CatalogueService> | null>(null);
@@ -130,8 +148,14 @@ export function ServiceCatalogueTab() {
                 <BandsEditor bands={(editing.bands as Band[]) || []} onChange={bands => setEditing({ ...editing, bands })} />
               )}
 
-              <L label="Default scope text" help="Shown on proposals and in the engagement letter's service schedule.">
-                <textarea value={editing.default_scope_text || ''} onChange={e => setEditing({ ...editing, default_scope_text: e.target.value })} rows={2} className={`${field} resize-none`} />
+              <L label="Default scope text" help="Becomes this service's own 'Scope of work' section on every proposal — write it like a promise (what we do, what's included, what we need from you).">
+                <textarea value={editing.default_scope_text || ''} onChange={e => setEditing({ ...editing, default_scope_text: e.target.value })} rows={4} className={`${field} resize-none`} />
+                {!editing.default_scope_text && suggestScopeFor(editing.name, editing.code) && (
+                  <button type="button" onClick={() => setEditing({ ...editing, default_scope_text: suggestScopeFor(editing.name, editing.code)! })}
+                    className="mt-1.5 text-xs font-medium text-blue-700 hover:underline">
+                    Insert suggested scope for “{editing.name}”
+                  </button>
+                )}
               </L>
               {error && <p className="text-sm text-rose-600">{error}</p>}
               <div className="flex justify-end gap-2 pt-1">

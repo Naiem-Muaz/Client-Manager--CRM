@@ -95,6 +95,7 @@ export function ProposalPage() {
         d={d}
         accent={accent}
         showValidity={phase === 'view'}
+        showNextSteps={phase === 'view'}
         pdfHref={d.hasPdf ? `${API_ROOT}/p/${token}/pdf` : null}
         afterHero={phase === 'accepted' ? (
         <div className="mb-8 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 sm:p-6">
@@ -130,120 +131,175 @@ export function ProposalPage() {
 }
 
 /**
- * The proposal body — hero, intro, service cards, fee summary w/ monthly/
- * annual toggle, scope, PDF link. Exported so the BUILDER's preview renders
- * the exact same component the prospect sees (a faithful preview by
- * construction, not by imitation).
+ * The proposal body — exported so the BUILDER's preview renders the exact
+ * same component the prospect sees (faithful by construction).
+ *
+ * NARRATIVE STRUCTURE (redesign 2026-07-11): a story that ends in a price —
+ * 1 COVER (no prices) → 2 ABOUT THIS PROPOSAL → 3 SCOPE OF WORK (one
+ * subsection per service, real paragraphs, no prices) → 4 YOUR INVESTMENT
+ * (fees + toggle + totals; never a £0.00 monthly headline) → 5 NEXT STEPS.
  */
-export function ProposalContent({ d, accent, afterHero, pdfHref, showValidity }: {
-  d: Payload; accent: string; afterHero?: React.ReactNode; pdfHref?: string | null; showValidity?: boolean;
+export function ProposalContent({ d, accent, afterHero, pdfHref, showValidity, showNextSteps }: {
+  d: Payload; accent: string; afterHero?: React.ReactNode; pdfHref?: string | null; showValidity?: boolean; showNextSteps?: boolean;
 }) {
-  const [view, setView] = useState<'monthly' | 'annual'>('monthly');
+  const hasMonthly = Number(d.monthlyTotalPence) > 0;
+  const hasAnnual = Number(d.annualTotalPence) > 0;
+  const [view, setView] = useState<'monthly' | 'annual'>(hasMonthly ? 'monthly' : 'annual');
   const recurring = useMemo(() => (d.items || []).filter(i => i.frequency !== 'one_off'), [d]);
   const oneOff = useMemo(() => (d.items || []).filter(i => i.frequency === 'one_off'), [d]);
+  const items = d.items || [];
+  const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+
   return (
     <>
-      {/* Hero */}
-      <header className="pt-10 pb-6">
+      {/* ── 1. COVER — the handshake; no prices ─────────────────────────── */}
+      <header className="pt-14 sm:pt-20 pb-12 sm:pb-16 min-h-[55vh] flex flex-col">
         {d.firm?.logoUrl
-          ? <img src={d.firm.logoUrl} alt={d.firm?.name || ''} className="h-10 sm:h-12 object-contain" />
-          : <p className="text-xl font-bold" style={{ color: NAVY }}>{d.firm?.name}</p>}
-        <div className="h-0.5 w-full mt-5 rounded-full" style={{ background: accent }} />
-        <p className="mt-7 text-[11px] font-semibold tracking-[0.2em]" style={{ color: accent }}>PROPOSAL</p>
-        <h1 className="mt-1.5 text-3xl sm:text-4xl font-bold text-slate-900 leading-tight">{d.title}</h1>
-        <p className="mt-2.5 text-slate-500">
-          Prepared for <span className="font-medium text-slate-700">{d.prospect?.name || 'you'}</span>
-          {d.prospect?.company && <> — {d.prospect.company}</>}
-        </p>
-        {d.validUntil && showValidity && (
-          <p className="mt-1 text-xs text-slate-400 inline-flex items-center gap-1.5"><Clock size={12} />Valid until {fmtDate(d.validUntil)}</p>
-        )}
+          ? <img src={d.firm.logoUrl} alt={d.firm?.name || ''} className="h-12 sm:h-16 object-contain self-start" />
+          : <p className="text-2xl font-bold" style={{ color: NAVY }}>{d.firm?.name}</p>}
+        <div className="h-[3px] w-full mt-7 rounded-full" style={{ background: accent }} />
+        <div className="mt-14 sm:mt-20">
+          <p className="text-xs font-semibold tracking-[0.3em]" style={{ color: accent }}>PROPOSAL</p>
+          <h1 className="mt-3 text-4xl sm:text-5xl font-bold text-slate-900 leading-[1.1]">{d.title}</h1>
+          <p className="mt-5 text-lg text-slate-500 leading-relaxed">
+            Prepared for <span className="font-semibold text-slate-700">{d.prospect?.name || 'you'}</span>
+            {d.prospect?.company && <><br /><span className="text-slate-600">{d.prospect.company}</span></>}
+          </p>
+        </div>
+        <div className="mt-auto pt-12 text-sm text-slate-400 space-y-0.5">
+          <p>{today}{d.validUntil && showValidity && <span className="inline-flex items-center gap-1.5 ml-3 text-slate-400"><Clock size={12} />Valid until {fmtDate(d.validUntil)}</span>}</p>
+          <p className="font-medium text-slate-500">Prepared by {d.firm?.name}</p>
+        </div>
       </header>
 
       {afterHero}
 
-      {/* Intro */}
-      {d.introMd && <p className="text-[15px] leading-relaxed text-slate-700 whitespace-pre-line mb-8">{d.introMd}</p>}
+      {/* ── 2. INTRODUCTION ─────────────────────────────────────────────── */}
+      <section className="pt-2">
+        <SectionLabel accent={accent}>About this proposal</SectionLabel>
+        <p className="mt-3 text-[15px] leading-relaxed text-slate-700 whitespace-pre-line">
+          {d.introMd || `Thank you for the opportunity to work with ${d.prospect?.company || 'you'}. This proposal sets out the services we recommend, exactly what each one covers, and a clear, fixed view of your investment — no surprises, only the support you signed up for.`}
+        </p>
+      </section>
 
-      {/* Services */}
-      <SectionLabel accent={accent}>Your services</SectionLabel>
-      <div className="mt-3 space-y-3">
-        {recurring.map((i, n) => <ServiceCard key={n} item={i} />)}
-      </div>
-      {!!oneOff.length && (
-        <>
-          <div className="mt-7"><SectionLabel accent={accent}>One-off</SectionLabel></div>
-          <div className="mt-3 space-y-3">
-            {oneOff.map((i, n) => <ServiceCard key={n} item={i} />)}
-          </div>
-        </>
-      )}
-
-      {/* Fee summary + toggle */}
-      <div className="mt-8 rounded-2xl overflow-hidden border border-slate-200">
-        <div className="flex items-center justify-between px-5 py-3.5 bg-slate-50 border-b border-slate-200">
-          <p className="text-sm font-semibold text-slate-700">Fee summary</p>
-          <div className="flex rounded-lg bg-slate-200/70 p-0.5 text-xs font-medium">
-            {(['monthly', 'annual'] as const).map(v => (
-              <button key={v} onClick={() => setView(v)}
-                className={`px-3 py-1.5 rounded-md capitalize transition-colors ${view === v ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'}`}>
-                {v}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="divide-y divide-slate-100">
-          {recurring.map((i, n) => {
-            const line = Number(i.line_total_pence);
-            const shown = view === 'annual' ? line * (ANNUALISE[i.frequency] || 1) : line;
+      {/* ── 3. SCOPE OF WORK — per service, no prices ───────────────────── */}
+      <section className="mt-12">
+        <SectionLabel accent={accent}>Scope of work</SectionLabel>
+        <p className="mt-2 text-sm text-slate-400">What we'll take care of, service by service. Fees follow below.</p>
+        <div className="mt-6 space-y-7">
+          {items.map((i, n) => {
+            const qty = Number(i.quantity);
             return (
-              <div key={n} className="flex items-baseline justify-between px-5 py-3 text-sm">
-                <span className="text-slate-600">{i.name}{view === 'monthly' && i.frequency !== 'monthly' && <span className="text-slate-400"> ({FREQ[i.frequency].slice(1)})</span>}</span>
-                <span className="tabular-nums font-medium text-slate-800">
-                  {money(shown)}<span className="text-slate-400 font-normal">{view === 'annual' ? '/year' : FREQ[i.frequency]}</span>
-                </span>
+              <div key={n}>
+                <h3 className="text-lg font-bold text-slate-900">
+                  <span className="tabular-nums mr-2" style={{ color: accent }}>{n + 1}.</span>{i.name}
+                </h3>
+                <p className="mt-1.5 text-[15px] leading-relaxed text-slate-600 whitespace-pre-line">
+                  {i.scope_text || 'Scope to be confirmed in your engagement letter.'}
+                  {i.pricing_model === 'per_unit' && qty !== 1 && <span className="text-slate-400"> Sized for approximately {qty} units.</span>}
+                </p>
               </div>
             );
           })}
-          {oneOff.map((i, n) => (
-            <div key={`o${n}`} className="flex items-baseline justify-between px-5 py-3 text-sm">
-              <span className="text-slate-600">{i.name} <span className="text-slate-400">(one-off)</span></span>
-              <span className="tabular-nums font-medium text-slate-800">{money(i.line_total_pence)}</span>
-            </div>
-          ))}
-          {d.discountPercent ? (
-            <div className="flex items-baseline justify-between px-5 py-3 text-sm">
-              <span className="font-medium" style={{ color: accent }}>Discount applied</span>
-              <span className="font-medium" style={{ color: accent }}>−{d.discountPercent}%</span>
-            </div>
-          ) : null}
         </div>
-        <div className="px-5 py-4" style={{ background: `${accent}0d`, borderTop: `2px solid ${accent}` }}>
-          <div className="flex items-baseline justify-between">
-            <span className="text-sm font-semibold text-slate-700">{view === 'annual' ? 'Annual investment' : 'Monthly total'}</span>
-            <span className="text-2xl font-bold tabular-nums" style={{ color: accent }}>
-              {money(view === 'annual' ? d.annualTotalPence : d.monthlyTotalPence)}
-              <span className="text-sm font-medium text-slate-400">{view === 'annual' ? '/year' : '/month'}</span>
-            </span>
+      </section>
+
+      {/* ── 4. YOUR INVESTMENT ──────────────────────────────────────────── */}
+      <section className="mt-12">
+        <SectionLabel accent={accent}>Your investment</SectionLabel>
+        <div className="mt-4 rounded-2xl overflow-hidden border border-slate-200">
+          <div className="flex items-center justify-between px-5 py-3.5 bg-slate-50 border-b border-slate-200">
+            <p className="text-sm font-semibold text-slate-700">Fees</p>
+            {hasMonthly && (
+              <div className="flex rounded-lg bg-slate-200/70 p-0.5 text-xs font-medium">
+                {(['monthly', 'annual'] as const).map(v => (
+                  <button key={v} onClick={() => setView(v)}
+                    className={`px-3 py-1.5 rounded-md capitalize transition-colors ${view === v ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'}`}>
+                    {v}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-          {Number(d.oneoffTotalPence) > 0 && (
-            <p className="text-xs text-slate-500 mt-1 text-right">+ {money(d.oneoffTotalPence)} one-off</p>
-          )}
+          <div className="divide-y divide-slate-100">
+            {recurring.map((i, n) => {
+              const line = Number(i.line_total_pence);
+              const shown = view === 'annual' ? line * (ANNUALISE[i.frequency] || 1) : line;
+              return (
+                <div key={n} className="flex items-baseline justify-between px-5 py-3 text-sm">
+                  <span className="text-slate-600">{i.name}{view === 'monthly' && i.frequency !== 'monthly' && <span className="text-slate-400"> ({FREQ[i.frequency].slice(1)})</span>}</span>
+                  <span className="tabular-nums font-medium text-slate-800">
+                    {money(shown)}<span className="text-slate-400 font-normal">{view === 'annual' ? '/year' : FREQ[i.frequency]}</span>
+                  </span>
+                </div>
+              );
+            })}
+            {oneOff.map((i, n) => (
+              <div key={`o${n}`} className="flex items-baseline justify-between px-5 py-3 text-sm">
+                <span className="text-slate-600">{i.name} <span className="text-slate-400">(one-off)</span></span>
+                <span className="tabular-nums font-medium text-slate-800">{money(i.line_total_pence)}</span>
+              </div>
+            ))}
+            {d.discountPercent ? (
+              <div className="flex items-baseline justify-between px-5 py-3 text-sm">
+                <span className="font-medium" style={{ color: accent }}>Discount applied</span>
+                <span className="font-medium" style={{ color: accent }}>−{d.discountPercent}%</span>
+              </div>
+            ) : null}
+          </div>
+          {/* Headline total — only a total that actually applies, never £0.00 */}
+          <div className="px-5 py-4" style={{ background: `${accent}0d`, borderTop: `2px solid ${accent}` }}>
+            {(hasMonthly || hasAnnual) && (
+              <div className="flex items-baseline justify-between">
+                <span className="text-sm font-semibold text-slate-700">{view === 'annual' || !hasMonthly ? 'Annual investment' : 'Monthly total'}</span>
+                <span className="text-2xl font-bold tabular-nums" style={{ color: accent }}>
+                  {money(view === 'annual' || !hasMonthly ? d.annualTotalPence : d.monthlyTotalPence)}
+                  <span className="text-sm font-medium text-slate-400">{view === 'annual' || !hasMonthly ? '/year' : '/month'}</span>
+                </span>
+              </div>
+            )}
+            {Number(d.oneoffTotalPence) > 0 && (
+              (hasMonthly || hasAnnual)
+                ? <p className="text-xs text-slate-500 mt-1 text-right">+ {money(d.oneoffTotalPence)} one-off</p>
+                : <div className="flex items-baseline justify-between">
+                    <span className="text-sm font-semibold text-slate-700">One-off total</span>
+                    <span className="text-2xl font-bold tabular-nums" style={{ color: accent }}>{money(d.oneoffTotalPence)}</span>
+                  </div>
+            )}
+          </div>
         </div>
-      </div>
 
-      {/* Scope */}
-      {d.scopeMd && (
-        <div className="mt-8">
-          <SectionLabel accent={accent}>Scope &amp; notes</SectionLabel>
-          <p className="mt-2 text-sm leading-relaxed text-slate-500 whitespace-pre-line">{d.scopeMd}</p>
-        </div>
-      )}
+        {d.scopeMd && (
+          <div className="mt-5">
+            <p className="text-xs font-semibold text-slate-500">Assumptions &amp; notes</p>
+            <p className="mt-1.5 text-sm leading-relaxed text-slate-400 whitespace-pre-line">{d.scopeMd}</p>
+          </div>
+        )}
 
-      {pdfHref && (
-        <a href={pdfHref} className="mt-6 inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-700">
-          <Download size={15} />Download as PDF
-        </a>
+        {pdfHref && (
+          <a href={pdfHref} className="mt-5 inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-700">
+            <Download size={15} />Download as PDF
+          </a>
+        )}
+      </section>
+
+      {/* ── 5. NEXT STEPS (live proposals; accepted view has its own) ───── */}
+      {showNextSteps && (
+        <section className="mt-12">
+          <SectionLabel accent={accent}>Next steps</SectionLabel>
+          <ol className="mt-4 space-y-2.5 text-[15px] text-slate-700">
+            {[
+              'Accept this proposal below — it takes under a minute.',
+              'Your engagement letter arrives by email for a quick e-signature.',
+              'We set up your client workspace, key dates and reminders.',
+              'Where direct debit is offered, fees then take care of themselves.',
+            ].map((s, n) => (
+              <li key={n} className="flex gap-3">
+                <span className="font-bold tabular-nums" style={{ color: accent }}>{n + 1}.</span>{s}
+              </li>
+            ))}
+          </ol>
+        </section>
       )}
     </>
   );
@@ -277,25 +333,6 @@ function SectionLabel({ accent, children }: { accent: string; children: React.Re
   return <p className="text-[11px] font-semibold tracking-[0.18em] uppercase" style={{ color: accent }}>{children}</p>;
 }
 
-function ServiceCard({ item }: { item: Item }) {
-  const qty = Number(item.quantity);
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200 px-5 py-4 flex items-start justify-between gap-4">
-      <div className="min-w-0">
-        <p className="font-semibold text-slate-900">{item.name}</p>
-        {(item.scope_text || (item.pricing_model === 'per_unit' && qty !== 1)) && (
-          <p className="text-sm text-slate-500 mt-1 leading-relaxed">
-            {item.scope_text}{item.pricing_model === 'per_unit' && qty !== 1 && <span className="text-slate-400"> ({qty} × {money(item.unit_price_pence)})</span>}
-          </p>
-        )}
-      </div>
-      <div className="text-right flex-shrink-0">
-        <p className="font-bold text-slate-900 tabular-nums">{money(item.line_total_pence)}</p>
-        <p className="text-xs text-slate-400">{FREQ[item.frequency]}</p>
-      </div>
-    </div>
-  );
-}
 
 function AcceptPanel({ accent, token, firmName, onAccepted, onDeclined, onStale }: {
   accent: string; token: string; firmName: string;
