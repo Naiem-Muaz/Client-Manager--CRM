@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   AlertTriangle, CheckCircle2, Clock, Download, FileText, Loader2, XCircle,
@@ -32,17 +32,15 @@ interface Payload {
   annualVatPence?: number; annualGrossPence?: number;
   oneoffVatPence?: number; oneoffGrossPence?: number;
   validUntil?: string | null;
-  prospect?: { name: string | null; company: string | null };
-  firm?: { name: string; logoUrl: string | null; accentColor: string | null; phone?: string | null };
+  prospect?: { name: string | null; company: string | null; companyNumber?: string | null; registeredOffice?: string | null };
+  firm?: { name: string; logoUrl: string | null; accentColor: string | null; phone?: string | null; address?: string | null; email?: string | null; licenceNumber?: string | null };
   acceptedAt?: string | null; acceptedByName?: string | null; declinedAt?: string | null;
   hasPdf?: boolean;
   mandateUrl?: string | null; // step-6 seam: rendered when present
 }
 
 const money = (pence: any) => '£' + (Number(pence) / 100).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const FREQ: Record<string, string> = { monthly: '/month', quarterly: '/quarter', annual: '/year', one_off: 'one-off' };
 const FREQ_LABEL: Record<string, string> = { monthly: 'Monthly', quarterly: 'Quarterly', annual: 'Annually', one_off: 'One-off' };
-const ANNUALISE: Record<string, number> = { monthly: 12, quarterly: 4, annual: 1 };
 const fmtDate = (d?: string | null) => d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : null;
 const lineVat = (net: number, rate: any) => { const r = Number(rate); return Number.isFinite(r) && r > 0 ? Math.round(net * r / 100) : 0; };
 
@@ -218,12 +216,34 @@ export function ProposalContent({ d, accent, afterHero, pdfHref, showValidity, s
 
         {/* ── 2. narrative opens ────────────────────────────────────────── */}
         <div className="text-sm text-slate-400 flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span>Prepared for <span className="font-medium text-slate-600">{d.prospect?.name || 'you'}</span>{d.prospect?.company && ` — ${d.prospect.company}`}</span>
-          <span>·</span><span>{today}</span>
+          <span>{today}</span>
           {d.validUntil && showValidity && <><span>·</span><span className="inline-flex items-center gap-1"><Clock size={12} />Valid until {fmtDate(d.validUntil)}</span></>}
         </div>
 
-        <section className="mt-8">
+        {/* Parties block: Prepared for / Prepared by */}
+        <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <div>
+            <p className="text-[11px] font-bold tracking-[0.15em] uppercase" style={{ color: accent }}>Prepared for</p>
+            <div className="mt-2 text-sm text-slate-600 space-y-0.5">
+              <p className="font-semibold text-slate-900">{d.prospect?.company || d.prospect?.name}</p>
+              {d.prospect?.company && d.prospect?.name && <p>{d.prospect.name}</p>}
+              {d.prospect?.companyNumber && <p>Company no. {d.prospect.companyNumber}</p>}
+              {d.prospect?.registeredOffice && <p>{d.prospect.registeredOffice}</p>}
+            </div>
+          </div>
+          <div>
+            <p className="text-[11px] font-bold tracking-[0.15em] uppercase" style={{ color: accent }}>Prepared by</p>
+            <div className="mt-2 text-sm text-slate-600 space-y-0.5">
+              <p className="font-semibold text-slate-900">{d.firm?.name}</p>
+              {d.firm?.address && <p>{d.firm.address}</p>}
+              {d.firm?.phone && <p>Tel {d.firm.phone}</p>}
+              {d.firm?.email && <p>{d.firm.email}</p>}
+              {d.firm?.licenceNumber && <p>Ref {d.firm.licenceNumber}</p>}
+            </div>
+          </div>
+        </div>
+
+        <section className="mt-10">
           <SectionLabel accent={accent}>About this proposal</SectionLabel>
           <p className="mt-3 text-[15px] leading-relaxed text-slate-700 whitespace-pre-line">
             {d.introMd || `Thank you for the opportunity to work with ${d.prospect?.company || 'you'}. This proposal sets out the services we recommend, exactly what each one covers, and a clear, fixed view of your investment — no surprises, only the support you signed up for.`}

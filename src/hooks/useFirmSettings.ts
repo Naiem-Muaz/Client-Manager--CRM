@@ -16,6 +16,8 @@ export interface FirmSettings {
   brand_accent_color: string | null;
   vat_registered?: boolean;
   default_vat_rate?: number | string | null;
+  proposal_intro_template?: string | null;
+  proposal_scope_template?: string | null;
 }
 
 const fetcher = (url: string) => NextGenAPI.get(url).then(r => r.data.data ?? r.data);
@@ -30,9 +32,16 @@ export async function updateFirmSettings(fields: Partial<FirmSettings>) {
   return res.data;
 }
 
-export async function uploadFirmLogo(file: File): Promise<string> {
+export async function uploadFirmLogo(file: File): Promise<{ logoUrl: string; suggestedAccent: string | null }> {
   const fd = new FormData();
   fd.append('logo', file);
   const res = await NextGenAPI.post('/brain/settings/logo', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
-  return (res.data.data ?? res.data)?.logoUrl;
+  const d = res.data.data ?? res.data;
+  return { logoUrl: d?.logoUrl, suggestedAccent: d?.suggestedAccent ?? null };
+}
+
+/** Sample the current logo for a brand accent (PNG only). Never writes anything. */
+export async function suggestAccentFromLogo(): Promise<{ suggestedAccent: string | null; reason: string }> {
+  const res = await NextGenAPI.post('/brain/settings/suggest-accent', {});
+  return res.data.data ?? res.data;
 }

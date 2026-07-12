@@ -98,7 +98,7 @@ export async function seedStandardServices() {
 }
 
 // ── prospect actions ──────────────────────────────────────────────────────────
-export async function createProspect(payload: { contactName: string; email: string; phone?: string; companyName?: string; companyNumber?: string }) {
+export async function createProspect(payload: { contactName: string; email: string; phone?: string; companyName?: string; companyNumber?: string; addressLine1?: string; addressLine2?: string; city?: string; postcode?: string; country?: string }) {
   const res = await NextGenAPI.post('/brain/prospects', payload);
   globalMutate('/brain/prospects');
   return unwrap(res);

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Loader2, UploadCloud, Building2, Check } from 'lucide-react';
-import { useFirmSettings, updateFirmSettings, uploadFirmLogo, FirmSettings } from '../../hooks/useFirmSettings';
+import { Loader2, UploadCloud, Building2, Check, Pipette } from 'lucide-react';
+import { useFirmSettings, updateFirmSettings, uploadFirmLogo, suggestAccentFromLogo, FirmSettings } from '../../hooks/useFirmSettings';
 import { errMsg } from '../../lib/errMsg';
 
 const field = 'w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400';
@@ -12,6 +12,8 @@ export function FirmSettingsTab() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [suggestion, setSuggestion] = useState<string | null>(null);
+  const [sampling, setSampling] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { if (firm) setForm(firm); }, [firm]);
@@ -38,10 +40,20 @@ export function FirmSettingsTab() {
     if (!f) return;
     if (!/^image\/(png|jpe?g)$/i.test(f.type)) { setError('Logo must be a PNG or JPG image'); return; }
     if (f.size > 2 * 1024 * 1024) { setError('Logo must be under 2MB'); return; }
-    setUploading(true); setError(null);
-    try { await uploadFirmLogo(f); await mutate(); }
+    setUploading(true); setError(null); setSuggestion(null);
+    try { const r = await uploadFirmLogo(f); await mutate(); if (r.suggestedAccent) setSuggestion(r.suggestedAccent); }
     catch (err: any) { setError(errMsg(err, 'Logo upload failed')); }
     finally { setUploading(false); if (fileRef.current) fileRef.current.value = ''; }
+  };
+
+  const sampleLogo = async () => {
+    setSampling(true); setError(null); setSuggestion(null);
+    try {
+      const r = await suggestAccentFromLogo();
+      if (r.suggestedAccent) setSuggestion(r.suggestedAccent);
+      else setError(r.reason === 'no_logo' ? 'Upload a logo first.' : r.reason === 'not_png' ? 'Colour sampling works with PNG logos — set the colour manually.' : "Couldn't read a colour from the logo — set it manually.");
+    } catch (e: any) { setError(errMsg(e)); }
+    finally { setSampling(false); }
   };
 
   if (isLoading) return <div className="py-12 text-center text-slate-400"><Loader2 className="animate-spin inline mr-2" /> Loading firm settings…</div>;
@@ -96,7 +108,20 @@ export function FirmSettingsTab() {
               <div className="h-2" style={{ background: /^#[0-9a-fA-F]{6}$/.test(form.brand_accent_color || '') ? form.brand_accent_color! : '#1a365d' }} />
               <p className="px-3 py-1.5 text-[11px] text-slate-400">Live preview — proposal hero rule, totals and buttons use this.</p>
             </div>
+            <button type="button" onClick={sampleLogo} disabled={sampling || !form.logo_url}
+              title={form.logo_url ? 'Sample a colour from your logo' : 'Upload a logo first'}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200 disabled:opacity-50 whitespace-nowrap">
+              {sampling ? <Loader2 size={13} className="animate-spin" /> : <Pipette size={13} />}Suggest from logo
+            </button>
           </div>
+          {suggestion && (
+            <div className="mt-2 flex items-center gap-2.5 px-3 py-2 bg-blue-50 border border-blue-100 rounded-lg">
+              <span className="w-5 h-5 rounded border border-white shadow-sm flex-shrink-0" style={{ background: suggestion }} />
+              <span className="text-sm text-slate-700">Sampled <span className="font-mono">{suggestion}</span> from your logo.</span>
+              <button type="button" onClick={() => { set('brand_accent_color', suggestion); setSuggestion(null); }} className="ml-auto text-sm font-medium text-blue-700 hover:underline">Apply</button>
+              <button type="button" onClick={() => setSuggestion(null)} className="text-xs text-slate-400 hover:text-slate-600">Dismiss</button>
+            </div>
+          )}
         </Labeled>
         <Labeled label="VAT on proposals" full>
           <div className="flex flex-wrap items-center gap-4">

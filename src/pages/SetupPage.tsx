@@ -6,6 +6,7 @@ import {
     Zap,
     AlertTriangle,
     Building2,
+    FileText,
     ShieldCheck,
     Clock,
     Save
@@ -13,6 +14,7 @@ import {
 import { UsersTab, HMRCTab, WorkflowTab, RiskTab } from '../components/settings/SettingsTabs';
 import { FirmSettingsTab } from '../components/settings/FirmSettingsTab';
 import { ServiceCatalogueTab } from '../components/settings/ServiceCatalogueTab';
+import { ProposalDefaultsTab } from '../components/settings/ProposalDefaultsTab';
 import { SponsorComplianceTab } from '../components/sponsor/SponsorComplianceTab';
 import { TeamTime } from '../components/hr/TeamTime';
 import { useAuth } from '../context/AuthContext';
@@ -27,6 +29,7 @@ export function SetupPage() {
     const tabs = [
         { id: 'firm', label: 'Firm Settings', icon: Building2 },
         { id: 'catalogue', label: 'Service Catalogue', icon: PoundSterling },
+        { id: 'proposal-defaults', label: 'Proposal Defaults', icon: FileText },
         { id: 'users', label: 'Users & Roles', icon: Users },
         { id: 'hmrc', label: 'HMRC Setup', icon: Shield },
         { id: 'workflow', label: 'Workflow Rules', icon: Zap },
@@ -70,6 +73,7 @@ export function SetupPage() {
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 min-h-[500px]">
                 {activeTab === 'firm' && <FirmSettingsTab />}
                 {activeTab === 'catalogue' && <ServiceCatalogueTab />}
+                {activeTab === 'proposal-defaults' && <ProposalDefaultsTab />}
                 {activeTab === 'users' && <UsersTab />}
                 {activeTab === 'hmrc' && <HMRCTab />}
                 {activeTab === 'workflow' && <WorkflowTab />}

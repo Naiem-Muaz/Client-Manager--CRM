@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import {
-  ArrowLeft, Ban, BellRing, CheckCircle2, Eye, Loader2, Plus, Save, Search, Send, Trash2, X, XCircle,
+  AlertTriangle, ArrowLeft, Ban, BellRing, CheckCircle2, Eye, Loader2, Plus, Save, Search, Send, Trash2, X, XCircle,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { btnGhost, btnPrimary, SectionCard } from '../components/sponsor/ui';
@@ -420,10 +420,15 @@ function ItemsEditor({ items, setItems, services }: {
                 </Labelled>
               </>
             )}
-            <div className={it.catalogueServiceId && it.pricingModel === 'fixed' ? 'sm:col-span-3' : 'sm:col-span-2'}>
-              <Labelled label="Scope shown to the prospect">
-                <input value={it.scopeText} onChange={e => update(i, { scopeText: e.target.value })} className={field} />
+            <div className="sm:col-span-3">
+              <Labelled label="Scope shown to the prospect" help={!it.scopeText?.trim() ? undefined : 'This becomes the service’s own section on the proposal.'}>
+                <textarea value={it.scopeText} onChange={e => update(i, { scopeText: e.target.value })} rows={it.scopeText && it.scopeText.length > 80 ? 4 : 2} className={`${field} resize-y ${!it.scopeText?.trim() ? 'border-amber-300 ring-1 ring-amber-100' : ''}`} />
               </Labelled>
+              {!it.scopeText?.trim() && (
+                <p className="mt-1 text-[11px] text-amber-600 inline-flex items-center gap-1.5">
+                  <AlertTriangle size={11} />No description — this service will render without a scope section. Add scope text or pick a catalogue service that has one.
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -468,6 +473,7 @@ export function NewProposalPage() {
   const [phone, setPhone] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [companyNumber, setCompanyNumber] = useState('');
+  const [addr, setAddr] = useState({ addressLine1: '', city: '', postcode: '' });
   const [chResults, setChResults] = useState<CompanySearchResult[]>([]);
   const [chQuery, setChQuery] = useState('');
   const [busy, setBusy] = useState(false);
@@ -492,6 +498,7 @@ export function NewProposalPage() {
         const created = await createProspect({
           contactName: contactName.trim(), email: email.trim(), phone: phone.trim() || undefined,
           companyName: companyName.trim() || undefined, companyNumber: companyNumber.trim() || undefined,
+          addressLine1: addr.addressLine1.trim() || undefined, city: addr.city.trim() || undefined, postcode: addr.postcode.trim() || undefined,
         });
         pid = created.id;
       }
@@ -552,8 +559,18 @@ export function NewProposalPage() {
                 ))}
               </ul>
             )}
-            {companyNumber && <p className="text-[11px] text-emerald-600 mt-1">Linked to company {companyNumber} — CH details prefill on create.</p>}
+            {companyNumber && <p className="text-[11px] text-emerald-600 mt-1">Linked to company {companyNumber} — CH details (incl. registered office) prefill on create.</p>}
           </Labelled>
+          {!companyNumber && (
+            <div>
+              <p className="text-xs font-medium text-slate-500 mb-1.5">Registered office <span className="text-slate-400 font-normal">(optional — shown on the proposal when there's no Companies House match)</span></p>
+              <div className="grid grid-cols-2 gap-3">
+                <input value={addr.addressLine1} onChange={e => setAddr(a => ({ ...a, addressLine1: e.target.value }))} placeholder="Address" className={`${field} col-span-2`} />
+                <input value={addr.city} onChange={e => setAddr(a => ({ ...a, city: e.target.value }))} placeholder="Town/city" className={field} />
+                <input value={addr.postcode} onChange={e => setAddr(a => ({ ...a, postcode: e.target.value }))} placeholder="Postcode" className={field} />
+              </div>
+            </div>
+          )}
         </div>
       )}
 

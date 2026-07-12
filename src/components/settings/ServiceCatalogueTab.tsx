@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BookOpen, Loader2, Pencil, Plus, PoundSterling, Sparkles, Trash2, X } from 'lucide-react';
+import { AlertTriangle, BookOpen, Loader2, Pencil, Plus, PoundSterling, Sparkles, Trash2, X } from 'lucide-react';
 import {
   CatalogueService, createCatalogueService, deactivateCatalogueService,
   seedStandardServices, updateCatalogueService, useCatalogue, useServiceLibrary,
@@ -77,6 +77,16 @@ export function ServiceCatalogueTab() {
     try { await deactivateCatalogueService(svc.id); await mutate(); } catch (e: any) { setError(errMsg(e)); }
   };
 
+  // Match a catalogue row to a library entry by code OR normalised name (so a
+  // pre-library row like code "101" name "Bookkeeping" still matches).
+  const norm = (s?: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const libMatch = (svc: CatalogueService) => library.find(l => l.code === svc.code || norm(l.name) === norm(svc.name));
+  const fillFromLibrary = async (svc: CatalogueService) => {
+    const lib = libMatch(svc); if (!lib) return;
+    try { await updateCatalogueService(svc.id, { default_scope_text: lib.description }); await mutate(); }
+    catch (e: any) { setError(errMsg(e)); }
+  };
+
   if (isLoading) return <div className="py-12 text-center text-slate-400"><Loader2 className="animate-spin inline mr-2" /> Loading catalogue…</div>;
 
   return (
@@ -116,6 +126,12 @@ export function ServiceCatalogueTab() {
                 {svc.pricing_model === 'per_unit' && `${money(svc.unit_price_pence)} per ${svc.unit_label || 'unit'}`}
                 {svc.pricing_model === 'turnover_band' && `${(svc.bands || []).length} turnover bands`}
               </p>
+              {!svc.default_scope_text?.trim() && (
+                <p className="mt-1 text-[11px] text-amber-600 inline-flex items-center gap-1.5">
+                  <AlertTriangle size={11} />No description — this service renders without scope copy on proposals.
+                  {libMatch(svc) && <button onClick={() => fillFromLibrary(svc)} className="text-blue-700 font-medium hover:underline">Fill from library</button>}
+                </p>
+              )}
             </div>
             <button onClick={() => setEditing({ ...svc, bands: svc.bands || [] })} className="p-2 text-slate-400 hover:text-blue-600"><Pencil size={15} /></button>
             {svc.is_active && <button onClick={() => deactivate(svc)} className="p-2 text-slate-400 hover:text-rose-600"><Trash2 size={15} /></button>}
