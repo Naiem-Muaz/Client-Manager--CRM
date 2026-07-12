@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Loader2, Pencil, Plus, PoundSterling, Trash2, X } from 'lucide-react';
+import { BookOpen, Loader2, Pencil, Plus, PoundSterling, Sparkles, Trash2, X } from 'lucide-react';
 import {
-  CatalogueService, createCatalogueService, deactivateCatalogueService, updateCatalogueService, useCatalogue,
+  CatalogueService, createCatalogueService, deactivateCatalogueService,
+  seedStandardServices, updateCatalogueService, useCatalogue, useServiceLibrary,
 } from '../../hooks/useProposals';
 import { errMsg } from '../../lib/errMsg';
 
@@ -44,9 +45,19 @@ const suggestScopeFor = (name?: string, code?: string): string | null =>
 
 export function ServiceCatalogueTab() {
   const { services, isLoading, mutate } = useCatalogue(false);
+  const { library } = useServiceLibrary();
   const [editing, setEditing] = useState<Partial<CatalogueService> | null>(null);
   const [busy, setBusy] = useState(false);
+  const [seeding, setSeeding] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const seed = async () => {
+    if (seeding || !window.confirm('Add the standard UK accountancy services to your catalogue? Existing services are left untouched; prices are left for you to set.')) return;
+    setSeeding(true); setError(null);
+    try { const r = await seedStandardServices(); await mutate(); setError(null); window.alert(`Added ${r.added} service${r.added === 1 ? '' : 's'}${r.skipped ? ` (${r.skipped} already present)` : ''}. Set their prices next.`); }
+    catch (e: any) { setError(errMsg(e)); }
+    finally { setSeeding(false); }
+  };
 
   const save = async () => {
     if (!editing || busy) return;
@@ -75,10 +86,22 @@ export function ServiceCatalogueTab() {
           <h3 className="text-base font-bold text-slate-900">Service catalogue</h3>
           <p className="text-sm text-slate-500">Your pricing matrix — consistent prices across every proposal.</p>
         </div>
-        <button onClick={() => setEditing({ ...EMPTY })} className="inline-flex items-center gap-2 px-3.5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">
-          <Plus size={15} />Add service
-        </button>
+        <div className="flex items-center gap-2">
+          {!services.length && (
+            <button onClick={seed} disabled={seeding} className="inline-flex items-center gap-2 px-3.5 py-2 bg-slate-100 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-200 disabled:opacity-50">
+              {seeding ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}Seed standard services
+            </button>
+          )}
+          <button onClick={() => setEditing({ ...EMPTY })} className="inline-flex items-center gap-2 px-3.5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">
+            <Plus size={15} />Add service
+          </button>
+        </div>
       </div>
+      {!!services.length && (
+        <button onClick={seed} disabled={seeding} className="text-xs font-medium text-blue-700 hover:underline inline-flex items-center gap-1.5">
+          {seeding ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}Add any missing standard services
+        </button>
+      )}
       {error && <p className="text-sm text-rose-600">{error}</p>}
 
       <div className="bg-white border border-slate-200 rounded-xl divide-y divide-slate-100 overflow-hidden">
@@ -109,6 +132,18 @@ export function ServiceCatalogueTab() {
               <button onClick={() => setEditing(null)} className="p-1.5 text-slate-400 hover:text-slate-600"><X size={16} /></button>
             </div>
             <div className="space-y-3.5">
+              {!editing.id && !!library.length && (
+                <L label="Start from library" help="Pre-fills the name, frequency and a professional description. You set the price.">
+                  <div className="relative">
+                    <BookOpen size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                    <select className={`${field} pl-9`} value=""
+                      onChange={e => { const lib = library.find(l => l.code === e.target.value); if (lib) setEditing({ ...editing, code: lib.code, name: lib.name, frequency: lib.frequency, default_scope_text: lib.description }); }}>
+                      <option value="">— choose a standard service —</option>
+                      {library.map(l => <option key={l.code} value={l.code}>{l.name}</option>)}
+                    </select>
+                  </div>
+                </L>
+              )}
               <div className="grid grid-cols-2 gap-3.5">
                 <L label="Name"><input value={editing.name || ''} onChange={e => setEditing({ ...editing, name: e.target.value })} className={field} /></L>
                 <L label="Code" help="Stable id, e.g. annual_accounts">
@@ -126,6 +161,11 @@ export function ServiceCatalogueTab() {
                     <option value="monthly">Monthly</option><option value="quarterly">Quarterly</option>
                     <option value="annual">Annual</option><option value="one_off">One-off</option>
                   </select>
+                </L>
+                <L label="VAT rate %" help="Blank = your firm's default rate.">
+                  <input type="number" min={0} max={100} step="0.5" value={editing.vat_rate == null ? '' : String(editing.vat_rate)}
+                    onChange={e => setEditing({ ...editing, vat_rate: e.target.value === '' ? null : Number(e.target.value) })}
+                    placeholder="default" className={`${field} tabular-nums`} />
                 </L>
               </div>
 

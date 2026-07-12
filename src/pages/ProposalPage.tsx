@@ -20,7 +20,7 @@ const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 interface Item {
   name: string; scope_text: string | null; pricing_model: string;
   quantity: string | number; unit_price_pence: string | number; line_total_pence: string | number;
-  frequency: 'monthly' | 'quarterly' | 'annual' | 'one_off';
+  frequency: 'monthly' | 'quarterly' | 'annual' | 'one_off'; vat_rate?: string | number;
 }
 interface Payload {
   status: string;
@@ -28,9 +28,12 @@ interface Payload {
   items?: Item[];
   discountPercent?: number | null;
   monthlyTotalPence?: number; annualTotalPence?: number; oneoffTotalPence?: number;
+  monthlyVatPence?: number; monthlyGrossPence?: number;
+  annualVatPence?: number; annualGrossPence?: number;
+  oneoffVatPence?: number; oneoffGrossPence?: number;
   validUntil?: string | null;
   prospect?: { name: string | null; company: string | null };
-  firm?: { name: string; logoUrl: string | null; accentColor: string | null };
+  firm?: { name: string; logoUrl: string | null; accentColor: string | null; phone?: string | null };
   acceptedAt?: string | null; acceptedByName?: string | null; declinedAt?: string | null;
   hasPdf?: boolean;
   mandateUrl?: string | null; // step-6 seam: rendered when present
@@ -38,8 +41,43 @@ interface Payload {
 
 const money = (pence: any) => '£' + (Number(pence) / 100).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const FREQ: Record<string, string> = { monthly: '/month', quarterly: '/quarter', annual: '/year', one_off: 'one-off' };
+const FREQ_LABEL: Record<string, string> = { monthly: 'Monthly', quarterly: 'Quarterly', annual: 'Annually', one_off: 'One-off' };
 const ANNUALISE: Record<string, number> = { monthly: 12, quarterly: 4, annual: 1 };
 const fmtDate = (d?: string | null) => d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : null;
+const lineVat = (net: number, rate: any) => { const r = Number(rate); return Number.isFinite(r) && r > 0 ? Math.round(net * r / 100) : 0; };
+
+// accent → very dark cover bg + a lighter complementary stripe tone
+const HEX6 = /^#[0-9a-fA-F]{6}$/;
+const hexRgb = (h: string): [number, number, number] => { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+const rgbHex = (r: number, g: number, b: number) => '#' + [r, g, b].map(x => Math.max(0, Math.min(255, Math.round(x))).toString(16).padStart(2, '0')).join('');
+const mixHex = (a: string, b: string, t: number) => { const x = hexRgb(a), y = hexRgb(b); return rgbHex(x[0] + (y[0] - x[0]) * t, x[1] + (y[1] - x[1]) * t, x[2] + (y[2] - x[2]) * t); };
+const coverBgOf = (accent: string) => mixHex(HEX6.test(accent) ? accent : NAVY, '#000000', 0.82);
+const stripe2Of = (accent: string) => mixHex(HEX6.test(accent) ? accent : NAVY, '#ffffff', 0.28);
+
+/** Render library scope copy: paragraphs, "What's included:" heading, "• " bullets. */
+function ScopeCopy({ text, accent }: { text: string; accent: string }) {
+  const lines = String(text).split('\n');
+  const out: React.ReactNode[] = [];
+  let bullets: string[] = [];
+  const flush = (key: string) => {
+    if (bullets.length) {
+      out.push(<ul key={key} className="mt-1.5 mb-3 space-y-1.5">{bullets.map((b, i) => (
+        <li key={i} className="flex gap-2.5 text-[15px] text-slate-600 leading-relaxed"><span style={{ color: accent }} className="mt-0.5">•</span>{b}</li>
+      ))}</ul>);
+      bullets = [];
+    }
+  };
+  lines.forEach((raw, i) => {
+    const line = raw.trim();
+    if (!line) { flush(`f${i}`); return; }
+    if (/^what'?s included:?$/i.test(line)) { flush(`f${i}`); out.push(<p key={`h${i}`} className="mt-3 text-sm font-semibold" style={{ color: accent }}>{line}</p>); return; }
+    if (/^[•\-]\s+/.test(line)) { bullets.push(line.replace(/^[•\-]\s+/, '')); return; }
+    flush(`f${i}`);
+    out.push(<p key={`p${i}`} className="text-[15px] leading-relaxed text-slate-600 mb-2">{line}</p>);
+  });
+  flush('end');
+  return <>{out}</>;
+}
 
 export function ProposalPage() {
   const { token } = useParams<{ token: string }>();
@@ -145,162 +183,171 @@ export function ProposalContent({ d, accent, afterHero, pdfHref, showValidity, s
   const hasMonthly = Number(d.monthlyTotalPence) > 0;
   const hasAnnual = Number(d.annualTotalPence) > 0;
   const [view, setView] = useState<'monthly' | 'annual'>(hasMonthly ? 'monthly' : 'annual');
-  const recurring = useMemo(() => (d.items || []).filter(i => i.frequency !== 'one_off'), [d]);
-  const oneOff = useMemo(() => (d.items || []).filter(i => i.frequency === 'one_off'), [d]);
   const items = d.items || [];
+  const coverBg = coverBgOf(accent);
+  const stripe2 = stripe2Of(accent);
+  const company = d.prospect?.company || d.prospect?.name || 'You';
   const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  const hasVat = items.some(i => lineVat(Number(i.line_total_pence), i.vat_rate) > 0);
+  const oneoffGross = Number(d.oneoffGrossPence ?? d.oneoffTotalPence);
 
   return (
     <>
-      {/* ── 1. COVER — the handshake; no prices ─────────────────────────── */}
-      <header className="pt-14 sm:pt-20 pb-12 sm:pb-16 min-h-[55vh] flex flex-col">
-        {d.firm?.logoUrl
-          ? <img src={d.firm.logoUrl} alt={d.firm?.name || ''} className="h-12 sm:h-16 object-contain self-start" />
-          : <p className="text-2xl font-bold" style={{ color: NAVY }}>{d.firm?.name}</p>}
-        <div className="h-[3px] w-full mt-7 rounded-full" style={{ background: accent }} />
-        <div className="mt-14 sm:mt-20">
-          <p className="text-xs font-semibold tracking-[0.3em]" style={{ color: accent }}>PROPOSAL</p>
-          <h1 className="mt-3 text-4xl sm:text-5xl font-bold text-slate-900 leading-[1.1]">{d.title}</h1>
-          <p className="mt-5 text-lg text-slate-500 leading-relaxed">
-            Prepared for <span className="font-semibold text-slate-700">{d.prospect?.name || 'you'}</span>
-            {d.prospect?.company && <><br /><span className="text-slate-600">{d.prospect.company}</span></>}
+      {/* ── 1. COVER — full-bleed, bold, no prices ──────────────────────── */}
+      <div className="relative w-screen left-1/2 -translate-x-1/2 min-h-screen flex flex-col overflow-hidden" style={{ background: coverBg }}>
+        {/* two diagonal accent stripes */}
+        <div className="absolute pointer-events-none" style={{ width: '220%', height: 34, background: accent, top: '61%', left: '-60%', transform: 'rotate(-26deg)' }} />
+        <div className="absolute pointer-events-none" style={{ width: '220%', height: 34, background: stripe2, top: 'calc(61% + 52px)', left: '-60%', transform: 'rotate(-26deg)' }} />
+        <div className="relative max-w-2xl mx-auto w-full px-6 sm:px-10 flex flex-col flex-1 py-14 sm:py-16">
+          {d.firm?.logoUrl
+            ? <img src={d.firm.logoUrl} alt={d.firm?.name || ''} className="h-12 sm:h-14 object-contain self-start brightness-0 invert" />
+            : <p className="text-xl sm:text-2xl font-bold text-white">{d.firm?.name}</p>}
+          <div className="mt-auto">
+            <p className="text-sm font-bold tracking-[0.35em]" style={{ color: stripe2 }}>PROPOSAL FOR</p>
+            <h1 className="mt-3 text-5xl sm:text-6xl font-extrabold text-white uppercase leading-[1.02] break-words">{company}</h1>
+          </div>
+          <div className="mt-auto pt-16 text-sm text-white/80">
+            {d.firm?.name}{d.firm?.phone ? <span className="mx-2">·</span> : null}{d.firm?.phone}
+          </div>
+        </div>
+      </div>
+
+      {/* body (constrained column) */}
+      <div className="pt-12">
+        {afterHero}
+
+        {/* ── 2. narrative opens ────────────────────────────────────────── */}
+        <div className="text-sm text-slate-400 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span>Prepared for <span className="font-medium text-slate-600">{d.prospect?.name || 'you'}</span>{d.prospect?.company && ` — ${d.prospect.company}`}</span>
+          <span>·</span><span>{today}</span>
+          {d.validUntil && showValidity && <><span>·</span><span className="inline-flex items-center gap-1"><Clock size={12} />Valid until {fmtDate(d.validUntil)}</span></>}
+        </div>
+
+        <section className="mt-8">
+          <SectionLabel accent={accent}>About this proposal</SectionLabel>
+          <p className="mt-3 text-[15px] leading-relaxed text-slate-700 whitespace-pre-line">
+            {d.introMd || `Thank you for the opportunity to work with ${d.prospect?.company || 'you'}. This proposal sets out the services we recommend, exactly what each one covers, and a clear, fixed view of your investment — no surprises, only the support you signed up for.`}
           </p>
-        </div>
-        <div className="mt-auto pt-12 text-sm text-slate-400 space-y-0.5">
-          <p>{today}{d.validUntil && showValidity && <span className="inline-flex items-center gap-1.5 ml-3 text-slate-400"><Clock size={12} />Valid until {fmtDate(d.validUntil)}</span>}</p>
-          <p className="font-medium text-slate-500">Prepared by {d.firm?.name}</p>
-        </div>
-      </header>
-
-      {afterHero}
-
-      {/* ── 2. INTRODUCTION ─────────────────────────────────────────────── */}
-      <section className="pt-2">
-        <SectionLabel accent={accent}>About this proposal</SectionLabel>
-        <p className="mt-3 text-[15px] leading-relaxed text-slate-700 whitespace-pre-line">
-          {d.introMd || `Thank you for the opportunity to work with ${d.prospect?.company || 'you'}. This proposal sets out the services we recommend, exactly what each one covers, and a clear, fixed view of your investment — no surprises, only the support you signed up for.`}
-        </p>
-      </section>
-
-      {/* ── 3. SCOPE OF WORK — per service, no prices ───────────────────── */}
-      <section className="mt-12">
-        <SectionLabel accent={accent}>Scope of work</SectionLabel>
-        <p className="mt-2 text-sm text-slate-400">What we'll take care of, service by service. Fees follow below.</p>
-        <div className="mt-6 space-y-7">
-          {items.map((i, n) => {
-            const qty = Number(i.quantity);
-            return (
-              <div key={n}>
-                <h3 className="text-lg font-bold text-slate-900">
-                  <span className="tabular-nums mr-2" style={{ color: accent }}>{n + 1}.</span>{i.name}
-                </h3>
-                <p className="mt-1.5 text-[15px] leading-relaxed text-slate-600 whitespace-pre-line">
-                  {i.scope_text || 'Scope to be confirmed in your engagement letter.'}
-                  {i.pricing_model === 'per_unit' && qty !== 1 && <span className="text-slate-400"> Sized for approximately {qty} units.</span>}
-                </p>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* ── 4. YOUR INVESTMENT ──────────────────────────────────────────── */}
-      <section className="mt-12">
-        <SectionLabel accent={accent}>Your investment</SectionLabel>
-        <div className="mt-4 rounded-2xl overflow-hidden border border-slate-200">
-          <div className="flex items-center justify-between px-5 py-3.5 bg-slate-50 border-b border-slate-200">
-            <p className="text-sm font-semibold text-slate-700">Fees</p>
-            {hasMonthly && (
-              <div className="flex rounded-lg bg-slate-200/70 p-0.5 text-xs font-medium">
-                {(['monthly', 'annual'] as const).map(v => (
-                  <button key={v} onClick={() => setView(v)}
-                    className={`px-3 py-1.5 rounded-md capitalize transition-colors ${view === v ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'}`}>
-                    {v}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          <div className="divide-y divide-slate-100">
-            {recurring.map((i, n) => {
-              const line = Number(i.line_total_pence);
-              const shown = view === 'annual' ? line * (ANNUALISE[i.frequency] || 1) : line;
-              return (
-                <div key={n} className="flex items-baseline justify-between px-5 py-3 text-sm">
-                  <span className="text-slate-600">{i.name}{view === 'monthly' && i.frequency !== 'monthly' && <span className="text-slate-400"> ({FREQ[i.frequency].slice(1)})</span>}</span>
-                  <span className="tabular-nums font-medium text-slate-800">
-                    {money(shown)}<span className="text-slate-400 font-normal">{view === 'annual' ? '/year' : FREQ[i.frequency]}</span>
-                  </span>
-                </div>
-              );
-            })}
-            {oneOff.map((i, n) => (
-              <div key={`o${n}`} className="flex items-baseline justify-between px-5 py-3 text-sm">
-                <span className="text-slate-600">{i.name} <span className="text-slate-400">(one-off)</span></span>
-                <span className="tabular-nums font-medium text-slate-800">{money(i.line_total_pence)}</span>
-              </div>
-            ))}
-            {d.discountPercent ? (
-              <div className="flex items-baseline justify-between px-5 py-3 text-sm">
-                <span className="font-medium" style={{ color: accent }}>Discount applied</span>
-                <span className="font-medium" style={{ color: accent }}>−{d.discountPercent}%</span>
-              </div>
-            ) : null}
-          </div>
-          {/* Headline total — only a total that actually applies, never £0.00 */}
-          <div className="px-5 py-4" style={{ background: `${accent}0d`, borderTop: `2px solid ${accent}` }}>
-            {(hasMonthly || hasAnnual) && (
-              <div className="flex items-baseline justify-between">
-                <span className="text-sm font-semibold text-slate-700">{view === 'annual' || !hasMonthly ? 'Annual investment' : 'Monthly total'}</span>
-                <span className="text-2xl font-bold tabular-nums" style={{ color: accent }}>
-                  {money(view === 'annual' || !hasMonthly ? d.annualTotalPence : d.monthlyTotalPence)}
-                  <span className="text-sm font-medium text-slate-400">{view === 'annual' || !hasMonthly ? '/year' : '/month'}</span>
-                </span>
-              </div>
-            )}
-            {Number(d.oneoffTotalPence) > 0 && (
-              (hasMonthly || hasAnnual)
-                ? <p className="text-xs text-slate-500 mt-1 text-right">+ {money(d.oneoffTotalPence)} one-off</p>
-                : <div className="flex items-baseline justify-between">
-                    <span className="text-sm font-semibold text-slate-700">One-off total</span>
-                    <span className="text-2xl font-bold tabular-nums" style={{ color: accent }}>{money(d.oneoffTotalPence)}</span>
-                  </div>
-            )}
-          </div>
-        </div>
-
-        {d.scopeMd && (
-          <div className="mt-5">
-            <p className="text-xs font-semibold text-slate-500">Assumptions &amp; notes</p>
-            <p className="mt-1.5 text-sm leading-relaxed text-slate-400 whitespace-pre-line">{d.scopeMd}</p>
-          </div>
-        )}
-
-        {pdfHref && (
-          <a href={pdfHref} className="mt-5 inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-700">
-            <Download size={15} />Download as PDF
-          </a>
-        )}
-      </section>
-
-      {/* ── 5. NEXT STEPS (live proposals; accepted view has its own) ───── */}
-      {showNextSteps && (
-        <section className="mt-12">
-          <SectionLabel accent={accent}>Next steps</SectionLabel>
-          <ol className="mt-4 space-y-2.5 text-[15px] text-slate-700">
-            {[
-              'Accept this proposal below — it takes under a minute.',
-              'Your engagement letter arrives by email for a quick e-signature.',
-              'We set up your client workspace, key dates and reminders.',
-              'Where direct debit is offered, fees then take care of themselves.',
-            ].map((s, n) => (
-              <li key={n} className="flex gap-3">
-                <span className="font-bold tabular-nums" style={{ color: accent }}>{n + 1}.</span>{s}
-              </li>
-            ))}
-          </ol>
         </section>
-      )}
+
+        {/* ── 3. SCOPE OF WORK — one section per service, rich copy ──────── */}
+        <section className="mt-12">
+          <SectionLabel accent={accent}>Scope of work</SectionLabel>
+          <p className="mt-2 text-sm text-slate-400">What we'll take care of, service by service. Your investment is summarised at the end.</p>
+          <div className="mt-7 space-y-9">
+            {items.map((i, n) => (
+              <div key={n} className={n < items.length - 1 ? 'pb-9 border-b border-slate-100' : ''}>
+                <h3 className="text-xl font-bold mb-2.5" style={{ color: accent }}>{i.name}</h3>
+                <ScopeCopy text={i.scope_text || 'Scope to be confirmed in your engagement letter.'} accent={accent} />
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* ── 4. SUMMARY OF FEES — table + total bands ──────────────────── */}
+        <section className="mt-12">
+          <SectionLabel accent={accent}>Summary of fees</SectionLabel>
+          <div className="mt-4 rounded-xl overflow-hidden border border-slate-200">
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ background: NAVY }} className="text-white text-[11px] uppercase tracking-wider">
+                  <th className="text-left font-semibold px-4 py-3">Services</th>
+                  <th className="text-left font-semibold px-3 py-3">Frequency</th>
+                  {hasVat && <th className="text-right font-semibold px-3 py-3">Net</th>}
+                  {hasVat && <th className="text-right font-semibold px-3 py-3">VAT</th>}
+                  <th className="text-right font-semibold px-4 py-3">{hasVat ? 'Total' : 'Amount'}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {items.map((i, n) => {
+                  const net = Number(i.line_total_pence), vat = lineVat(net, i.vat_rate);
+                  return (
+                    <tr key={n} className={n % 2 ? 'bg-slate-50/60' : ''}>
+                      <td className="px-4 py-3 text-slate-800 font-medium">{i.name}</td>
+                      <td className="px-3 py-3 text-slate-500">{FREQ_LABEL[i.frequency] || i.frequency}</td>
+                      {hasVat && <td className="px-3 py-3 text-right tabular-nums text-slate-600">{money(net)}</td>}
+                      {hasVat && <td className="px-3 py-3 text-right tabular-nums text-slate-600">{money(vat)}</td>}
+                      <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-900">{money(net + vat)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Recurring headline + monthly/annual toggle */}
+          {(hasMonthly || hasAnnual) && (
+            <div className="mt-5 rounded-xl overflow-hidden" style={{ background: `${accent}0f`, border: `1px solid ${accent}33` }}>
+              <div className="flex items-center justify-between px-5 py-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Your recurring investment</p>
+                  <p className="text-3xl font-bold tabular-nums mt-1" style={{ color: accent }}>
+                    {money(view === 'annual' || !hasMonthly ? (d.annualGrossPence ?? d.annualTotalPence) : (d.monthlyGrossPence ?? d.monthlyTotalPence))}
+                    <span className="text-base font-medium text-slate-400">{view === 'annual' || !hasMonthly ? ' / year' : ' / month'}</span>
+                  </p>
+                  {hasVat && <p className="text-[11px] text-slate-400 mt-0.5">inclusive of VAT</p>}
+                </div>
+                {hasMonthly && hasAnnual && (
+                  <div className="flex rounded-lg bg-white/70 p-0.5 text-xs font-medium shadow-sm">
+                    {(['monthly', 'annual'] as const).map(v => (
+                      <button key={v} onClick={() => setView(v)}
+                        className={`px-3 py-1.5 rounded-md capitalize transition-colors ${view === v ? 'text-white' : 'text-slate-500'}`}
+                        style={view === v ? { background: accent } : undefined}>{v}</button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* One-off band (only when non-zero) */}
+          {oneoffGross > 0 && (
+            <div className="mt-3 flex items-center justify-between px-5 py-4 rounded-xl text-white" style={{ background: NAVY }}>
+              <span className="text-sm font-semibold">One-off Total</span>
+              <span className="text-xl font-bold tabular-nums">{money(oneoffGross)}</span>
+            </div>
+          )}
+
+          {(d.discountPercent || hasVat) && (
+            <p className="mt-3 text-xs text-slate-400">
+              {d.discountPercent ? `Includes a ${d.discountPercent}% discount. ` : ''}
+              {hasVat ? 'Total figures are inclusive of VAT.' : ''}
+            </p>
+          )}
+
+          {d.scopeMd && (
+            <div className="mt-6">
+              <p className="text-xs font-semibold text-slate-500">Assumptions &amp; notes</p>
+              <p className="mt-1.5 text-sm leading-relaxed text-slate-400 whitespace-pre-line">{d.scopeMd}</p>
+            </div>
+          )}
+
+          {pdfHref && (
+            <a href={pdfHref} className="mt-6 inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-700">
+              <Download size={15} />Download as PDF
+            </a>
+          )}
+        </section>
+
+        {/* ── 5. NEXT STEPS ─────────────────────────────────────────────── */}
+        {showNextSteps && (
+          <section className="mt-12">
+            <SectionLabel accent={accent}>Next steps</SectionLabel>
+            <ol className="mt-4 space-y-2.5 text-[15px] text-slate-700">
+              {[
+                'Accept this proposal below — it takes under a minute.',
+                'Your engagement letter arrives by email for a quick e-signature.',
+                'We set up your client workspace, key dates and reminders.',
+                'Where direct debit is offered, fees then take care of themselves.',
+              ].map((s, n) => (
+                <li key={n} className="flex gap-3">
+                  <span className="font-bold tabular-nums" style={{ color: accent }}>{n + 1}.</span>{s}
+                </li>
+              ))}
+            </ol>
+          </section>
+        )}
+      </div>
     </>
   );
 }

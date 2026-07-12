@@ -171,18 +171,27 @@ export function ProposalBuilderPage() {
   }
 
   // Faithful preview payload — the exact shape the public page receives.
+  // VAT mirrors the server: firm-default rate applied when the firm is
+  // registered (the server resolves per-item; a flat firm rate is the preview
+  // approximation). pv() = VAT on a discounted-net bucket.
+  const previewVatRate = (firm as any)?.vat_registered === false ? 0 : Number((firm as any)?.default_vat_rate ?? 20);
+  const pv = (net: number) => Math.round(net * previewVatRate / 100);
   const previewPayload: any = {
     status: 'viewed',
     title, introMd: intro, scopeMd: scope,
     items: items.map(it => ({
       name: it.name, scope_text: it.scopeText, pricing_model: it.pricingModel,
       quantity: it.quantity, unit_price_pence: it.unitPricePence, line_total_pence: lineTotal(it), frequency: it.frequency,
+      vat_rate: previewVatRate,
     })),
     discountPercent: discountNum,
     monthlyTotalPence: totals.monthly, annualTotalPence: totals.annual, oneoffTotalPence: totals.oneoff,
+    monthlyVatPence: pv(totals.monthly), monthlyGrossPence: totals.monthly + pv(totals.monthly),
+    annualVatPence: pv(totals.annual), annualGrossPence: totals.annual + pv(totals.annual),
+    oneoffVatPence: pv(totals.oneoff), oneoffGrossPence: totals.oneoff + pv(totals.oneoff),
     validUntil: validUntil || null,
     prospect: { name: proposal.prospect?.contact_name || null, company: proposal.prospect?.company_name || null },
-    firm: { name: firm?.name || 'Your practice', logoUrl: (firm as any)?.logo_url || null, accentColor: (firm as any)?.brand_accent_color || null },
+    firm: { name: firm?.name || 'Your practice', logoUrl: (firm as any)?.logo_url || null, accentColor: (firm as any)?.brand_accent_color || null, phone: (firm as any)?.phone || null },
   };
   const accent = (firm as any)?.brand_accent_color && /^#[0-9a-fA-F]{6}$/.test((firm as any).brand_accent_color)
     ? (firm as any).brand_accent_color : '#1a365d';

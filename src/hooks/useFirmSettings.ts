@@ -14,6 +14,8 @@ export interface FirmSettings {
   website: string | null;
   logo_url: string | null;
   brand_accent_color: string | null;
+  vat_registered?: boolean;
+  default_vat_rate?: number | string | null;
 }
 
 const fetcher = (url: string) => NextGenAPI.get(url).then(r => r.data.data ?? r.data);

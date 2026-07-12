@@ -25,6 +25,8 @@ export function FirmSettingsTab() {
         city: form.city, postcode: form.postcode, phone: form.phone,
         email: form.email, practice_license_number: form.practice_license_number, website: form.website,
         brand_accent_color: form.brand_accent_color || null,
+        vat_registered: form.vat_registered !== false,
+        default_vat_rate: form.default_vat_rate == null || (form.default_vat_rate as any) === '' ? 20 : Number(form.default_vat_rate),
       });
       await mutate(); setSaved(true);
     } catch (e: any) { setError(errMsg(e, 'Failed to save firm settings')); }
@@ -94,6 +96,28 @@ export function FirmSettingsTab() {
               <div className="h-2" style={{ background: /^#[0-9a-fA-F]{6}$/.test(form.brand_accent_color || '') ? form.brand_accent_color! : '#1a365d' }} />
               <p className="px-3 py-1.5 text-[11px] text-slate-400">Live preview — proposal hero rule, totals and buttons use this.</p>
             </div>
+          </div>
+        </Labeled>
+        <Labeled label="VAT on proposals" full>
+          <div className="flex flex-wrap items-center gap-4">
+            <label className="flex items-center gap-2.5 text-sm text-slate-700 cursor-pointer select-none">
+              <button type="button" role="switch" aria-checked={form.vat_registered !== false} onClick={() => set('vat_registered', (form.vat_registered === false ? true : false) as any)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${form.vat_registered !== false ? 'bg-blue-600' : 'bg-slate-200'}`}>
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${form.vat_registered !== false ? 'translate-x-6' : 'translate-x-1'}`} />
+              </button>
+              VAT registered
+            </label>
+            {form.vat_registered !== false && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-slate-500">Default rate</span>
+                <input type="number" min={0} max={100} step="0.5"
+                  value={form.default_vat_rate == null || (form.default_vat_rate as any) === '' ? 20 : (form.default_vat_rate as any)}
+                  onChange={e => set('default_vat_rate', e.target.value as any)}
+                  className={`${field} tabular-nums max-w-[90px]`} />
+                <span className="text-sm text-slate-500">%</span>
+              </div>
+            )}
+            <p className="text-[11px] text-slate-400 w-full">Proposals show a Net / VAT / Total fee table. Turn off if your practice isn't VAT registered; set a per-service rate in the catalogue to override.</p>
           </div>
         </Labeled>
       </div>

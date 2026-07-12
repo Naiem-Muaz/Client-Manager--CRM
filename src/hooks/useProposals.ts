@@ -14,6 +14,13 @@ export interface CatalogueService {
   bands: Array<{ min_pence: number; max_pence: number | null; price_pence: number }> | null;
   frequency: 'monthly' | 'quarterly' | 'annual' | 'one_off';
   default_scope_text: string | null; is_active: boolean; sort_order: number;
+  vat_rate?: number | string | null;
+}
+
+export interface LibraryService {
+  code: string; name: string;
+  frequency: 'monthly' | 'quarterly' | 'annual' | 'one_off';
+  description: string;
 }
 
 export interface Prospect {
@@ -77,6 +84,15 @@ export async function updateCatalogueService(id: string, updates: Partial<Catalo
 }
 export async function deactivateCatalogueService(id: string) {
   const res = await NextGenAPI.delete(`/brain/service-catalogue/${id}`);
+  globalMutate('/brain/service-catalogue'); globalMutate('/brain/service-catalogue?active=true');
+  return unwrap(res);
+}
+export function useServiceLibrary() {
+  const { data } = useSWR<LibraryService[]>('/brain/service-catalogue/library', fetcher);
+  return { library: (data || []) as LibraryService[] };
+}
+export async function seedStandardServices() {
+  const res = await NextGenAPI.post('/brain/service-catalogue/seed-standard', {});
   globalMutate('/brain/service-catalogue'); globalMutate('/brain/service-catalogue?active=true');
   return unwrap(res);
 }
