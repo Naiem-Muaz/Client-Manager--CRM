@@ -63,12 +63,13 @@ export function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
       {/* Logo Area */}
       <div className="h-16 flex items-center px-5 bg-[#0B162A] relative border-b border-slate-800">
         <div className="flex items-center gap-3 overflow-hidden">
-           {/* Simple Logo Placeholder */}
-          <div className="w-8 h-8 rounded bg-brand-accent flex items-center justify-center text-white font-bold text-lg shadow-lg shadow-green-900/20 flex-shrink-0">
-             L
-          </div>
-          <span className={`text-white font-bold text-lg tracking-wide whitespace-nowrap overflow-hidden transition-all duration-300 ${collapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'}`}>
-            Lumina
+          {/* NextGen brand mark (self-contained tile — works on the navy sidebar) */}
+          <img src="/nextgen-icon.svg" alt="NextGen" width={32} height={32}
+            className="w-8 h-8 rounded shadow-lg shadow-green-900/20 flex-shrink-0" />
+          {/* Wordmark: brand off-white on the navy sidebar — the brand dark-green
+              (#12352A) is unreadable on #0F1E3A, so we use the brand's own off-white. */}
+          <span style={{ color: '#FBFDF9' }} className={`font-bold text-lg tracking-wide whitespace-nowrap overflow-hidden transition-all duration-300 ${collapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'}`}>
+            NextGen
           </span>
         </div>
       </div>

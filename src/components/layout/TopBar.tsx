@@ -46,10 +46,10 @@ export function TopBar() {
              {/* User Menu */}
              <div className="flex items-center gap-3 cursor-pointer hover:bg-slate-50 p-1.5 rounded-lg transition-colors border border-transparent hover:border-slate-200">
                 <div className="w-8 h-8 rounded-full bg-brand-secondary flex items-center justify-center text-xs font-bold text-white shadow-sm ring-2 ring-white">
-                    LA
+                    NG
                 </div>
                 <div className="hidden md:block text-right">
-                    <p className="text-xs font-bold text-slate-700 leading-tight">Lumina Admin</p>
+                    <p className="text-xs font-bold text-slate-700 leading-tight">NextGen Admin</p>
                     <p className="text-[10px] text-slate-500 font-medium">Platform Admin</p>
                 </div>
              </div>
