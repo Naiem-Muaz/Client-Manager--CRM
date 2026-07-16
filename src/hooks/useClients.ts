@@ -171,6 +171,22 @@ export async function unarchiveClient(clientId: string) {
   return response.data;
 }
 
+export interface DeletionSignal { key: string; label: string; count: number; }
+export interface DeletionCheck { clientId: string; name: string; blocking: boolean; reasons: DeletionSignal[]; recommendation: 'archive' | 'delete'; }
+
+/** Side-effect-free probe: would the default gate block a permanent delete? (super_admin only) */
+export async function checkClientDeletion(clientId: string): Promise<DeletionCheck> {
+  const res = await NextGenAPI.get(`/brain/clients/${clientId}/deletion-check`);
+  return res.data.data;
+}
+
+/** Permanently delete a client (super_admin). Requires the exact name; force overrides the activity gate. */
+export async function deleteClient(clientId: string, opts: { confirmName: string; force?: boolean }) {
+  const res = await NextGenAPI.post(`/brain/clients/${clientId}/delete`, opts);
+  revalidateClientLists();
+  return res.data;
+}
+
 // Persist company / VAT fields (snake_case columns) via PATCH.
 export async function patchClient(clientId: string, fields: Record<string, any>) {
   const response = await NextGenAPI.patch(`/brain/clients/${clientId}`, fields);

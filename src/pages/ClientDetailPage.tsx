@@ -8,7 +8,9 @@ import {
   MoreHorizontal,
   RefreshCw,
   History,
-  Copy
+  Copy,
+  Archive,
+  Trash2
 } from 'lucide-react';
 
 import { ClientProfileSection } from '../components/clients/ClientProfileSection';
@@ -45,7 +47,10 @@ const MOCK_STARTING_AUTHORITY: ClientAuthority = {
     paye: 'None'
 };
 
-import { useClientDetails as useClient } from '../hooks/useClients';
+import { useClientDetails as useClient, archiveClient, unarchiveClient } from '../hooks/useClients';
+import { DeleteClientModal } from '../components/clients/DeleteClientModal';
+import { useAuth } from '../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import { useEntitiesForClient } from '../hooks/useEntities';
 
 export function ClientDetailPage() {
@@ -59,6 +64,11 @@ export function ClientDetailPage() {
 
   const [activeTab, setActiveTab] = useState('overview');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
+  const [archiving, setArchiving] = useState(false);
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role === 'super_admin';
 
   // State for Compliance Simulation
   const [hasEngagement, setHasEngagement] = useState(true);
@@ -154,6 +164,33 @@ export function ClientDetailPage() {
                             >
                                 <Copy size={15} className="text-slate-400" /> Copy client ID
                             </button>
+                            {/* Archive — the normal, safe, reversible action */}
+                            <button
+                                onClick={async () => {
+                                    setMenuOpen(false);
+                                    const wasArchived = !!client.archived_at;
+                                    if (!window.confirm(wasArchived ? `Restore ${client.legalName} to the active list?` : `Archive ${client.legalName}? Hidden from the active list — reversible.`)) return;
+                                    setArchiving(true);
+                                    try { await (wasArchived ? unarchiveClient(client.id) : archiveClient(client.id)); if (!wasArchived) navigate('/clients'); }
+                                    catch { window.alert('Action failed. Please try again.'); }
+                                    finally { setArchiving(false); }
+                                }}
+                                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                            >
+                                <Archive size={15} className="text-slate-400" /> {client.archived_at ? 'Restore client' : 'Archive client'}
+                            </button>
+                            {/* Delete — rare, dangerous, super_admin only; visually separated + red */}
+                            {isSuperAdmin && (
+                                <>
+                                    <div className="my-1 border-t border-slate-100" />
+                                    <button
+                                        onClick={() => { setMenuOpen(false); setShowDelete(true); }}
+                                        className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-rose-600 hover:bg-rose-50 transition-colors"
+                                    >
+                                        <Trash2 size={15} /> Delete client…
+                                    </button>
+                                </>
+                            )}
                         </div>
                     </>
                 )}
@@ -244,12 +281,20 @@ export function ClientDetailPage() {
       {activeTab === 'deadlines' && <ClientDeadlinesTab clientId={client.id} onNavigate={setActiveTab} />}
       {activeTab === 'activity' && <ActivityFeed clientId={client.id} />}
       
-      <ComplianceSimulator 
-        hasEngagement={hasEngagement} 
+      <ComplianceSimulator
+        hasEngagement={hasEngagement}
         setHasEngagement={setHasEngagement}
         authority={authority}
         setAuthority={setAuthority}
       />
+
+      {showDelete && (
+        <DeleteClientModal
+          client={{ id: client.id, name: client.legalName }}
+          onClose={() => setShowDelete(false)}
+          onDeleted={() => { setShowDelete(false); navigate('/clients'); }}
+        />
+      )}
     </div>
   );
 }
