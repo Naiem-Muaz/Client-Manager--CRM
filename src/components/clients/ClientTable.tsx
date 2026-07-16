@@ -2,15 +2,15 @@ import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import { MoreHorizontal, Eye, Archive, User, ChevronUp, ChevronDown, ChevronRight, Pencil, UserPlus, Tag, Download, X } from 'lucide-react';
-import { archiveClient, patchClient } from '../../hooks/useClients';
+import { archiveClient, unarchiveClient, patchClient } from '../../hooks/useClients';
 import { useTeamMembers } from '../../hooks/useTeam';
 import { GRADE_META, HealthGrade } from '../../hooks/useHealth';
 import { ClientQuickEditDrawer } from './ClientQuickEditDrawer';
 import { entityKey, ENTITY_META, ENTITY_GROUPS } from '../../lib/entityType';
 
-interface Props { clients: any[]; healthScores?: Record<string, { score: number; grade: HealthGrade }>; groupBy?: boolean }
+interface Props { clients: any[]; healthScores?: Record<string, { score: number; grade: HealthGrade }>; groupBy?: boolean; archived?: boolean }
 
-export function ClientTable({ clients, healthScores = {}, groupBy = false }: Props) {
+export function ClientTable({ clients, healthScores = {}, groupBy = false, archived = false }: Props) {
     const navigate = useNavigate();
     const { members } = useTeamMembers();
     const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -39,7 +39,11 @@ export function ClientTable({ clients, healthScores = {}, groupBy = false }: Pro
 
     const bulkAssign = (staffId: string) => runBulk('Assigning', c => patchClient(c.id, { assigned_staff_id: staffId || null }));
     const bulkAddTag = (tag: string) => runBulk('Tagging', c => patchClient(c.id, { addTag: tag }));
-    const bulkArchive = () => { if (!window.confirm(`Archive ${selected.size} client(s)?`)) return; return runBulk('Archiving', c => patchClient(c.id, { status: 'archived' })); };
+    const bulkArchive = () => {
+        if (archived) { if (!window.confirm(`Restore ${selected.size} client(s) to the active list?`)) return; return runBulk('Restoring', c => unarchiveClient(c.id)); }
+        if (!window.confirm(`Archive ${selected.size} client(s)? They will be hidden from the active list (reversible).`)) return;
+        return runBulk('Archiving', c => archiveClient(c.id));
+    };
     const bulkExport = () => {
         const rows = selectedClients();
         const headers = ['id', 'name', 'entityType', 'status', 'riskScore'];
@@ -60,12 +64,15 @@ export function ClientTable({ clients, healthScores = {}, groupBy = false }: Pro
 
     const handleArchive = async (client: any) => {
         setOpenMenuId(null);
-        if (!window.confirm(`Archive ${client.legalName}? They will be hidden from the active client list.`)) return;
+        const msg = archived
+            ? `Restore ${client.legalName} to the active client list?`
+            : `Archive ${client.legalName}? They will be hidden from the active client list (reversible from the Archived view).`;
+        if (!window.confirm(msg)) return;
         setArchivingId(client.id);
         try {
-            await archiveClient(client.id);
+            await (archived ? unarchiveClient(client.id) : archiveClient(client.id));
         } catch (e) {
-            window.alert('Failed to archive client. Please try again.');
+            window.alert(`Failed to ${archived ? 'restore' : 'archive'} client. Please try again.`);
         } finally {
             setArchivingId(null);
         }
@@ -178,8 +185,8 @@ export function ClientTable({ clients, healthScores = {}, groupBy = false }: Pro
                                 <button onClick={(e) => { e.stopPropagation(); setOpenMenuId(null); setEditing(client); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
                                     <Pencil size={15} className="text-slate-400" /> Edit
                                 </button>
-                                <button onClick={(e) => { e.stopPropagation(); handleArchive(client); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors">
-                                    <Archive size={15} /> Archive
+                                <button onClick={(e) => { e.stopPropagation(); handleArchive(client); }} className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors ${archived ? 'text-emerald-700 hover:bg-emerald-50' : 'text-red-600 hover:bg-red-50'}`}>
+                                    <Archive size={15} /> {archived ? 'Restore' : 'Archive'}
                                 </button>
                             </div>
                         </>,

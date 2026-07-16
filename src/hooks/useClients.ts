@@ -4,8 +4,9 @@ import { NextGenAPI } from '../api/NextGenAPI';
 
 const fetcher = (url: string) => NextGenAPI.get(url).then(res => res.data.data);
 
-export function useClients() {
-  const { data, error, isLoading } = useSWR('/brain/clients', fetcher);
+export function useClients(archived = false) {
+  const key = archived ? '/brain/clients?archived=true' : '/brain/clients';
+  const { data, error, isLoading } = useSWR(key, fetcher);
 
   return {
     clients: data,
@@ -13,6 +14,12 @@ export function useClients() {
     isError: error,
     mutate
   };
+}
+
+/** Revalidate both the active and archived client lists after an archive/unarchive. */
+function revalidateClientLists() {
+  mutate('/brain/clients');
+  mutate('/brain/clients?archived=true');
 }
 
 export function useClientDetails(clientId: string | undefined) {
@@ -151,8 +158,15 @@ export async function updateClient(clientId: string, clientData: Record<string, 
 }
 
 export async function archiveClient(clientId: string) {
-  const response = await NextGenAPI.patch(`/brain/clients/${clientId}`, { status: 'archived' });
-  mutate('/brain/clients');
+  const response = await NextGenAPI.post(`/brain/clients/${clientId}/archive`);
+  revalidateClientLists();
+  mutate(`/brain/clients/${clientId}`);
+  return response.data;
+}
+
+export async function unarchiveClient(clientId: string) {
+  const response = await NextGenAPI.post(`/brain/clients/${clientId}/unarchive`);
+  revalidateClientLists();
   mutate(`/brain/clients/${clientId}`);
   return response.data;
 }

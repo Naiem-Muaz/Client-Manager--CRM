@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Layers } from 'lucide-react';
+import { Layers, Archive } from 'lucide-react';
 import { ClientPageActions } from '../components/clients/ClientPageActions';
 import { ClientFilters, ClientFilterState, DEFAULT_CLIENT_FILTERS } from '../components/clients/ClientFilters';
 import { ClientTable } from '../components/clients/ClientTable';
@@ -15,7 +15,8 @@ function riskBand(score: number): 'low' | 'medium' | 'high' {
 }
 
 export function ClientListPage() {
-    const { clients: rawData, isError: error, isLoading } = useClients();
+    const [showArchived, setShowArchived] = useState<boolean>(false);
+    const { clients: rawData, isError: error, isLoading } = useClients(showArchived);
     const { scores: healthScores } = useHealthScores();
     const [filters, setFilters] = useState<ClientFilterState>(DEFAULT_CLIENT_FILTERS);
     const [groupBy, setGroupBy] = useState<boolean>(() => localStorage.getItem('clients_group_by_entity') === '1');
@@ -57,6 +58,14 @@ export function ClientListPage() {
                 >
                     <Layers size={16} /> Group by entity type
                 </button>
+                <button
+                    onClick={() => setShowArchived(v => !v)}
+                    className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium border transition-colors whitespace-nowrap ${
+                        showArchived ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                    }`}
+                >
+                    <Archive size={16} /> {showArchived ? 'Viewing archived' : 'Archived'}
+                </button>
             </div>
 
             {/* Content */}
@@ -82,7 +91,7 @@ export function ClientListPage() {
                     </button>
                 </div>
             ) : (
-                <ClientTable clients={filteredClients} healthScores={healthScores} groupBy={groupBy} />
+                <ClientTable clients={filteredClients} healthScores={healthScores} groupBy={groupBy} archived={showArchived} />
             )}
         </div>
     );
