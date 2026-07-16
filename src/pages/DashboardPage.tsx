@@ -2,6 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Users, Briefcase, AlertTriangle, FileSignature, ShieldCheck, Banknote, Activity } from 'lucide-react';
 import { useDashboardSummary } from '../hooks/useDashboard';
+import { DashboardDeadlinesPanel } from '../components/dashboard/DashboardDeadlinesPanel';
 import { entityKey, ENTITY_META } from '../lib/entityType';
 
 function KpiCard({ title, value, icon: Icon, isLoading, footer, tone = 'slate', onClick }: {
@@ -110,6 +111,11 @@ export function DashboardPage() {
           onClick={() => navigate('/clients')}
           footer={<span className="text-slate-400">Paid invoices this calendar month</span>}
         />
+      </div>
+
+      {/* Deadlines — what's urgent, what's next (engine-scoped; inherits assignment-scoping) */}
+      <div className="mb-8">
+        <DashboardDeadlinesPanel />
       </div>
 
       {/* Recent activity (real job events) */}
