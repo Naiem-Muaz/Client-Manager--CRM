@@ -7,6 +7,26 @@ import { Building2 } from 'lucide-react';
 // collects + confirms a new password, and posts to the existing /auth/reset-password
 // endpoint. On success the backend has already rehashed the password, consumed the
 // single-use token, and revoked refresh tokens — so we just send the user to sign in.
+
+// Module-level on purpose: defined inside the component, Shell gets a new identity
+// every render, so React remounts the whole form and the password inputs drop focus
+// after each keystroke (fields appear un-typeable).
+const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+    <div className="sm:mx-auto sm:w-full sm:max-w-md">
+      <div className="flex justify-center">
+        <div className="w-12 h-12 bg-indigo-600 rounded-xl flex items-center justify-center">
+          <Building2 className="w-8 h-8 text-white" />
+        </div>
+      </div>
+      <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">Choose a new password</h2>
+    </div>
+    <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+      <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">{children}</div>
+    </div>
+  </div>
+);
+
 export function ResetPasswordPage() {
   const [params] = useSearchParams();
   const token = params.get('token') || '';
@@ -44,22 +64,6 @@ export function ResetPasswordPage() {
       setIsLoading(false);
     }
   };
-
-  const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-    <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="flex justify-center">
-          <div className="w-12 h-12 bg-indigo-600 rounded-xl flex items-center justify-center">
-            <Building2 className="w-8 h-8 text-white" />
-          </div>
-        </div>
-        <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">Choose a new password</h2>
-      </div>
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">{children}</div>
-      </div>
-    </div>
-  );
 
   // No token in the URL → the link is malformed or was opened directly.
   if (!token) {
