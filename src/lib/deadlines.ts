@@ -13,6 +13,8 @@ export interface Deadline {
   id: string;
   client_id: string;
   client_name?: string;
+  client_entity_type?: string | null;   // from the engine join — feeds clientTypeOf
+  client_mtd_status?: string | null;
   deadline_type: {
     code: string; name: string; authority: Authority; category: string;
     penalty_info: { summary: string; authority: string } | null;

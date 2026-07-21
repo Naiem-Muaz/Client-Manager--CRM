@@ -6,12 +6,13 @@ import {
 } from 'lucide-react';
 import { usePracticeDeadlines, useCoverageRollup, PracticeFilters, CoverageRollup } from '../hooks/useDeadlineEngine';
 import { useTeamMembers } from '../hooks/useTeam';
+import { clientTypeOf, ClientType, CLIENT_TYPE_META, CLIENT_TYPE_ORDER } from '../lib/entityType';
 import {
   Deadline, formatDateOnly, daysPill, STATUS_LABELS, STATUS_ORDER, DeadlineStatus, DONE_STATUSES,
   AUTHORITY_LABELS, AUTHORITY_ORDER, Authority, weekStartISO, reasonMeta,
 } from '../lib/deadlines';
 
-type GroupBy = 'week' | 'assignee' | 'client';
+type GroupBy = 'week' | 'assignee' | 'client' | 'clienttype';
 type ViewMode = 'list' | 'calendar';
 type DatasetView = 'active' | 'done';
 
@@ -24,6 +25,7 @@ export function DeadlinesPage() {
   const [authority, setAuthority] = useState<string>('');
   const [statuses, setStatuses] = useState<DeadlineStatus[]>([]);
   const [assignee, setAssignee] = useState<string>('');
+  const [clientTypes, setClientTypes] = useState<ClientType[]>([]);
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
@@ -55,13 +57,19 @@ export function DeadlinesPage() {
   // Chips filter client-side WITHIN the current view's partition. The chip set is
   // scoped to the view (not-done vs done), so `statuses` can only ever hold codes
   // valid for the current partition.
+  // Client-type filter (multi-select). Uses the SAME clientTypeOf classifier the
+  // "Client type" grouping uses — one definition of each category.
+  const ctMatch = useMemo(
+    () => (d: Deadline) => clientTypes.length === 0 || clientTypes.includes(clientTypeOf({ entity_type: d.client_entity_type, mtd_status: d.client_mtd_status })),
+    [clientTypes],
+  );
   const shownActive = useMemo(
-    () => (statuses.length ? active.filter((d) => statuses.includes(d.status)) : active),
-    [active, statuses],
+    () => active.filter((d) => (!statuses.length || statuses.includes(d.status)) && ctMatch(d)),
+    [active, statuses, ctMatch],
   );
   const shownDone = useMemo(
-    () => (statuses.length ? done.filter((d) => statuses.includes(d.status)) : done),
-    [done, statuses],
+    () => done.filter((d) => (!statuses.length || statuses.includes(d.status)) && ctMatch(d)),
+    [done, statuses, ctMatch],
   );
   const groups = useMemo(() => buildActiveGroups(shownActive, groupBy), [shownActive, groupBy]);
 
@@ -69,8 +77,8 @@ export function DeadlinesPage() {
   // can't linger and filter the other to empty (the two chip sets are disjoint).
   const switchDataset = (d: DatasetView) => { setDataset(d); setStatuses([]); };
 
-  const clearFilters = () => { setAuthority(''); setStatuses([]); setAssignee(''); setOverdueOnly(false); setFrom(''); setTo(''); };
-  const hasFilters = authority || statuses.length || assignee || overdueOnly || from || to;
+  const clearFilters = () => { setAuthority(''); setStatuses([]); setAssignee(''); setClientTypes([]); setOverdueOnly(false); setFrom(''); setTo(''); };
+  const hasFilters = authority || statuses.length || assignee || clientTypes.length || overdueOnly || from || to;
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-8">
@@ -88,7 +96,7 @@ export function DeadlinesPage() {
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
         <div className="p-4 border-b border-slate-200 space-y-3">
           <div className="flex flex-wrap items-center gap-3">
-            <Toggle label="Group" value={groupBy} onChange={(v) => setGroupBy(v as GroupBy)} options={[['week', 'Week'], ['assignee', 'Assignee'], ['client', 'Client']]} />
+            <Toggle label="Group" value={groupBy} onChange={(v) => setGroupBy(v as GroupBy)} options={[['week', 'Week'], ['assignee', 'Assignee'], ['client', 'Client'], ['clienttype', 'Client type']]} />
             {/* Active / Done dataset toggle — LIST-view only (calendar shows everything).
                 Counts show each set's full size without switching. */}
             {view === 'list' && (
@@ -113,6 +121,7 @@ export function DeadlinesPage() {
               <option value="">All assignees</option>
               {members.map((m: any) => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
+            <ClientTypeFilter value={clientTypes} onChange={setClientTypes} />
             <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={selCls} title="From" />
             <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={selCls} title="To" />
             <label className="flex items-center gap-1.5 text-sm text-slate-600 px-2">
@@ -165,6 +174,37 @@ export function DeadlinesPage() {
 }
 
 const selCls = 'border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100';
+
+// Multi-select "All client types" filter — checkbox popover. Ticked types combine
+// (OR) and compose with the authority/assignee filters. Empty = all.
+function ClientTypeFilter({ value, onChange }: { value: ClientType[]; onChange: (v: ClientType[]) => void }) {
+  const [open, setOpen] = useState(false);
+  const toggle = (t: ClientType) => onChange(value.includes(t) ? value.filter((x) => x !== t) : [...value, t]);
+  const label = value.length === 0 ? 'All client types' : value.length === 1 ? CLIENT_TYPE_META[value[0]].label : `${value.length} client types`;
+  return (
+    <div className="relative">
+      <button type="button" onClick={() => setOpen((o) => !o)} className={`${selCls} flex items-center gap-1.5 ${value.length ? 'text-slate-900 border-blue-300' : 'text-slate-600'}`}>
+        {label} <ChevronDown size={14} className="text-slate-400" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 mt-1 w-52 bg-white border border-slate-200 rounded-lg shadow-lg z-20 py-1">
+            {CLIENT_TYPE_ORDER.map((t) => (
+              <label key={t} className="flex items-center gap-2.5 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 cursor-pointer">
+                <input type="checkbox" checked={value.includes(t)} onChange={() => toggle(t)} className="w-4 h-4 rounded text-blue-600" />
+                {CLIENT_TYPE_META[t].label}
+              </label>
+            ))}
+            {value.length > 0 && (
+              <button onClick={() => onChange([])} className="w-full text-left px-3 py-1.5 text-xs text-blue-600 hover:bg-slate-50 border-t border-slate-100 mt-1">Clear client types</button>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 function Toggle({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: [string, string][] }) {
   return (
@@ -445,8 +485,19 @@ function buildActiveGroups(rows: Deadline[], groupBy: GroupBy): Group[] {
 
   const map = new Map<string, Group>();
   for (const d of rows) {
-    const key = groupBy === 'assignee' ? (d.assignee_name ?? '~unassigned') : d.client_id;
-    const label = groupBy === 'assignee' ? (d.assignee_name ?? 'Unassigned') : (d.client_name ?? 'Unknown client');
+    let key: string, label: string;
+    if (groupBy === 'assignee') {
+      key = d.assignee_name ?? '~unassigned';
+      label = d.assignee_name ?? 'Unassigned';
+    } else if (groupBy === 'clienttype') {
+      // SAME classifier as the client-type filter — one definition of each category.
+      const ct = clientTypeOf({ entity_type: d.client_entity_type, mtd_status: d.client_mtd_status });
+      key = ct;
+      label = CLIENT_TYPE_META[ct].label;
+    } else {
+      key = d.client_id;
+      label = d.client_name ?? 'Unknown client';
+    }
     if (!map.has(key)) map.set(key, { key, label, rows: [] });
     map.get(key)!.rows.push(d);
   }
@@ -456,6 +507,11 @@ function buildActiveGroups(rows: Deadline[], groupBy: GroupBy): Group[] {
     const od = g.rows.filter((d) => d.overdue).sort(byDateDesc);
     g.rows = [...up, ...od];
   });
-  arr.sort((a, b) => a.label.localeCompare(b.label));
+  // Client-type sections follow the canonical order; other groupings alphabetical.
+  if (groupBy === 'clienttype') {
+    arr.sort((a, b) => CLIENT_TYPE_ORDER.indexOf(a.key as ClientType) - CLIENT_TYPE_ORDER.indexOf(b.key as ClientType));
+  } else {
+    arr.sort((a, b) => a.label.localeCompare(b.label));
+  }
   return arr;
 }
