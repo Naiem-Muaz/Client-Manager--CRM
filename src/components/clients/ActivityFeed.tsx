@@ -1,93 +1,39 @@
-import React, { useState, useMemo } from 'react';
-import { StickyNote, Shield, Briefcase, Pin, PinOff, Trash2, Pencil, Loader2, Check, X } from 'lucide-react';
-import { useClientNotes, addNote, updateNote, deleteNote, ClientNote } from '../../hooks/useNotes';
-import { useAuditLogs } from '../../hooks/useAudit';
-import { useJobEvents, JobEvent } from '../../hooks/useJobs';
-import { useAuth } from '../../context/AuthContext';
-import { STATUS_META } from '../work/TaskDetailModal';
+import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { Loader2, ArrowRight } from 'lucide-react';
+import { useClientTimeline } from '../../hooks/useTimeline';
+import { timelineMeta, relativeTime, TIMELINE_FILTER_ORDER, TIMELINE_META } from '../../lib/timeline';
+import { addNote } from '../../hooks/useNotes';
 
-function describeJobEvent(e: JobEvent): string {
-  const label = (s: string | null) => (s && (STATUS_META as any)[s]?.label) || s || '';
-  switch (e.eventType) {
-    case 'created': return `created job “${e.toValue || e.jobTitle}”`;
-    case 'status_changed': return `moved “${e.jobTitle}” from ${label(e.fromValue)} to ${label(e.toValue)}`;
-    case 'assigned': return `assigned “${e.jobTitle}” to ${e.toValue}`;
-    case 'comment_added': return `commented on “${e.jobTitle}”`;
-    case 'time_logged': { const m = e.metadata?.minutes || 0; return `logged ${(m / 60).toFixed(1)}h on “${e.jobTitle}”`; }
-    case 'checklist_step_toggled': return `completed “${e.toValue}” on “${e.jobTitle}”`;
-    case 'completed': return `completed “${e.jobTitle}”`;
-    default: return `updated “${e.jobTitle}”`;
-  }
-}
+const initials = (n?: string | null) => (n || '·').split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
 
-type FeedItem = {
-  id: string;
-  kind: 'note' | 'audit' | 'job';
-  ts: number;
-  authorName: string;
-  title: string;
-  pinned?: boolean;
-  note?: ClientNote;
-};
-
-const initials = (n?: string | null) => (n || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
-function relativeTime(ts: number): string {
-  const s = Math.floor((Date.now() - ts) / 1000);
-  if (s < 60) return 'just now';
-  const m = Math.floor(s / 60); if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60); if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24); if (d < 30) return `${d}d ago`;
-  return new Date(ts).toLocaleDateString('en-GB');
-}
-
-const KIND_ICON = { note: StickyNote, audit: Shield, job: Briefcase };
-const KIND_COLOR = { note: 'bg-blue-100 text-blue-600', audit: 'bg-slate-100 text-slate-500', job: 'bg-purple-100 text-purple-600' };
-
-export function ActivityFeed({ clientId }: { clientId: string }) {
-  const { user } = useAuth();
-  const { notes, isLoading: notesLoading, mutate: mutateNotes } = useClientNotes(clientId);
-  const { logs } = useAuditLogs(clientId);
-  const { events } = useJobEvents(clientId);
+/**
+ * Client Timeline — the unified activity feed (server-aggregated via
+ * /clients/:id/timeline). Retires the old 3-hook client-side merge. The note
+ * composer stays as a quick-add; new notes appear in the feed on refresh.
+ * `onOpenTab` (from the detail page) lets same-page entries jump to their tab.
+ */
+export function ActivityFeed({ clientId, onOpenTab }: { clientId: string; onOpenTab?: (tab: string) => void }) {
+  const [selected, setSelected] = useState<string[]>([]);
+  const { items, hasMore, loading, error, loadMore, refresh } = useClientTimeline(clientId, selected);
 
   const [body, setBody] = useState('');
   const [isInternal, setIsInternal] = useState(true);
   const [sending, setSending] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editBody, setEditBody] = useState('');
 
-  const items: FeedItem[] = useMemo(() => {
-    const out: FeedItem[] = [];
-    (notes || []).forEach(n => out.push({ id: `note-${n.id}`, kind: 'note', ts: new Date(n.createdAt).getTime(), authorName: n.authorName, title: n.body, pinned: n.pinned, note: n }));
-    (Array.isArray(logs) ? logs : []).forEach((l: any, i: number) => {
-      const ts = l.timestamp || l.created_at || l.createdAt;
-      out.push({ id: `audit-${l.id || i}`, kind: 'audit', ts: ts ? new Date(ts).getTime() : 0, authorName: l.user || l.actor || 'System', title: l.action || l.description || l.event_type || 'Activity' });
-    });
-    (events || []).forEach(e => out.push({ id: `job-${e.id}`, kind: 'job', ts: new Date(e.createdAt).getTime(), authorName: e.actorName, title: describeJobEvent(e) }));
-    // Pinned notes first, then reverse-chronological.
-    return out.sort((a, b) => {
-      if ((b.pinned ? 1 : 0) !== (a.pinned ? 1 : 0)) return (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0);
-      return b.ts - a.ts;
-    });
-  }, [notes, logs, events]);
-
+  const toggle = (t: string) => setSelected((p) => (p.includes(t) ? p.filter((x) => x !== t) : [...p, t]));
   const submit = async () => {
     if (!body.trim()) return;
     setSending(true);
-    try { await addNote(clientId, body.trim(), isInternal); setBody(''); mutateNotes(); }
+    try { await addNote(clientId, body.trim(), isInternal); setBody(''); refresh(); }
     finally { setSending(false); }
-  };
-  const togglePin = async (n: ClientNote) => { await updateNote(n.id, { pinned: !n.pinned }); mutateNotes(); };
-  const saveEdit = async (n: ClientNote) => { await updateNote(n.id, { body: editBody }); setEditingId(null); mutateNotes(); };
-  const remove = async (n: ClientNote) => {
-    if (!window.confirm('Delete this note?')) return;
-    try { await deleteNote(n.id); mutateNotes(); } catch { window.alert('Only the author can delete this note.'); }
   };
 
   return (
     <div className="max-w-3xl">
       {/* Composer */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 mb-6">
-        <textarea value={body} onChange={e => setBody(e.target.value)} rows={3} placeholder="Add a note…"
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 mb-5">
+        <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={2} placeholder="Add a note…"
           className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 resize-none" />
         <div className="flex items-center justify-between mt-3">
           <div className="flex bg-slate-100 p-1 rounded-lg text-xs font-medium">
@@ -100,55 +46,62 @@ export function ActivityFeed({ clientId }: { clientId: string }) {
         </div>
       </div>
 
+      {/* Filter chips */}
+      <div className="flex flex-wrap gap-1.5 mb-4">
+        <button onClick={() => setSelected([])} className={`px-2.5 py-1 rounded-full text-xs font-medium border ${selected.length === 0 ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'}`}>All</button>
+        {TIMELINE_FILTER_ORDER.map((t) => {
+          const on = selected.includes(t);
+          return (
+            <button key={t} onClick={() => toggle(t)} className={`px-2.5 py-1 rounded-full text-xs font-medium border ${on ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'}`}>
+              {TIMELINE_META[t].label}
+            </button>
+          );
+        })}
+      </div>
+
       {/* Feed */}
-      {notesLoading && items.length === 0 ? (
-        <div className="text-slate-400 text-sm flex items-center gap-2"><Loader2 size={16} className="animate-spin" /> Loading activity…</div>
+      {loading && items.length === 0 ? (
+        <div className="text-slate-400 text-sm flex items-center gap-2 py-6"><Loader2 size={16} className="animate-spin" /> Loading timeline…</div>
+      ) : error ? (
+        <p className="text-rose-600 text-sm py-6">Couldn’t load the timeline. <button onClick={refresh} className="underline">Retry</button></p>
       ) : items.length === 0 ? (
-        <p className="text-slate-400 text-sm text-center py-8">No activity yet. Add the first note above.</p>
+        <p className="text-slate-400 text-sm text-center py-8">No {selected.length ? 'matching ' : ''}activity yet.</p>
       ) : (
         <div className="relative pl-4">
           <div className="absolute left-[27px] top-2 bottom-2 w-px bg-slate-100" />
           <div className="space-y-4">
-            {items.map(item => {
-              const Icon = KIND_ICON[item.kind];
-              const n = item.note;
-              const isAuthor = !!n && !!user && n.authorId === user.id;
+            {items.map((item) => {
+              const meta = timelineMeta(item.type);
+              const Icon = meta.icon;
+              const nav = item.link && (meta.crossPage
+                ? <Link to={item.link} className="text-slate-300 hover:text-blue-600 shrink-0"><ArrowRight size={14} /></Link>
+                : onOpenTab
+                  ? <button onClick={() => onOpenTab(item.link)} className="text-slate-300 hover:text-blue-600 shrink-0"><ArrowRight size={14} /></button>
+                  : null);
               return (
                 <div key={item.id} className="relative flex gap-3 group">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 z-10 ${KIND_COLOR[item.kind]}`}><Icon size={14} /></div>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 z-10 ${meta.color}`}><Icon size={14} /></div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <div className="w-5 h-5 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-[9px] font-bold">{initials(item.authorName)}</div>
-                      <span className="text-sm font-medium text-slate-800">{item.authorName}</span>
-                      <span className="text-xs text-slate-400">{relativeTime(item.ts)}</span>
-                      {item.pinned && <Pin size={11} className="text-amber-500" />}
-                      {n && (n.isInternal
-                        ? <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">Internal</span>
-                        : <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">Client-visible</span>)}
+                      <div className="w-5 h-5 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-[9px] font-bold">{initials(item.actor)}</div>
+                      <span className="text-sm font-medium text-slate-800">{item.actor || 'System'}</span>
+                      <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">{meta.label}</span>
+                      <span className="text-xs text-slate-400">{relativeTime(item.timestamp)}</span>
                     </div>
-                    <div className="mt-1">
-                      {n && editingId === n.id ? (
-                        <div className="flex gap-2">
-                          <textarea value={editBody} onChange={e => setEditBody(e.target.value)} rows={2} className="flex-1 px-2 py-1 border border-slate-200 rounded text-sm" />
-                          <button onClick={() => saveEdit(n)} className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded"><Check size={16} /></button>
-                          <button onClick={() => setEditingId(null)} className="p-1.5 text-slate-400 hover:bg-slate-50 rounded"><X size={16} /></button>
-                        </div>
-                      ) : (
-                        <p className="text-sm text-slate-600 whitespace-pre-wrap">{item.title}</p>
-                      )}
-                    </div>
-                    {n && isAuthor && editingId !== n.id && (
-                      <div className="flex items-center gap-3 mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity text-slate-400">
-                        <button onClick={() => togglePin(n)} className="hover:text-amber-600 inline-flex items-center gap-1 text-xs">{n.pinned ? <PinOff size={12} /> : <Pin size={12} />}{n.pinned ? 'Unpin' : 'Pin'}</button>
-                        <button onClick={() => { setEditingId(n.id); setEditBody(n.body); }} className="hover:text-blue-600 inline-flex items-center gap-1 text-xs"><Pencil size={12} /> Edit</button>
-                        <button onClick={() => remove(n)} className="hover:text-red-600 inline-flex items-center gap-1 text-xs"><Trash2 size={12} /> Delete</button>
-                      </div>
-                    )}
+                    <p className="text-sm text-slate-600 whitespace-pre-wrap mt-0.5 break-words">{item.summary}</p>
                   </div>
+                  {nav}
                 </div>
               );
             })}
           </div>
+          {hasMore && (
+            <div className="pl-8 mt-5">
+              <button onClick={loadMore} disabled={loading} className="text-sm font-medium text-blue-600 hover:underline inline-flex items-center gap-1.5 disabled:opacity-50">
+                {loading ? <Loader2 size={14} className="animate-spin" /> : null} Load more
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

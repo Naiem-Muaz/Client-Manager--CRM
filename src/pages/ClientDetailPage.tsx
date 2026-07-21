@@ -279,7 +279,7 @@ export function ClientDetailPage() {
       {activeTab === 'documents' && <ClientDocumentsTab client={client} />}
       {activeTab === 'engagement' && <ClientEngagementTab clientId={client.id} />}
       {activeTab === 'deadlines' && <ClientDeadlinesTab clientId={client.id} onNavigate={setActiveTab} />}
-      {activeTab === 'activity' && <ActivityFeed clientId={client.id} />}
+      {activeTab === 'activity' && <ActivityFeed clientId={client.id} onOpenTab={(tab) => { if (['documents', 'deadlines', 'engagement', 'transactions', 'hmrc'].includes(tab)) setActiveTab(tab); }} />}
       
       <ComplianceSimulator
         hasEngagement={hasEngagement}
