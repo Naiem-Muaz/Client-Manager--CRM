@@ -44,3 +44,15 @@ export async function bulkApproveReminders(ids: string[]) { const r = await Next
 export async function skipReminder(id: string) { await NextGenAPI.post(`/brain/reminders/${id}/skip`); refreshAll(); }
 export async function editReminder(id: string, updates: { subject?: string; body_html?: string }) { await NextGenAPI.patch(`/brain/reminders/${id}`, updates); refreshAll(); }
 export async function addReminderEmail(id: string, email: string) { await NextGenAPI.post(`/brain/reminders/${id}/add-email`, { email }); refreshAll(); }
+
+// ── Practice Settings ────────────────────────────────────────────────────────
+const SETTINGS_URL = '/brain/reminders/settings';
+export interface ReminderTypeSetting { id: string; code: string; name: string; category: string; reminder_offsets_days: number[] }
+export interface ReminderSettings { enabled: boolean; types: ReminderTypeSetting[] }
+
+export function useReminderSettings() {
+  const { data, isLoading } = useSWR<ReminderSettings>(SETTINGS_URL, fetcher);
+  return { settings: data, isLoading };
+}
+export async function setRemindersEnabled(enabled: boolean) { await NextGenAPI.put(SETTINGS_URL, { enabled }); mutate(SETTINGS_URL); }
+export async function setTypeOffsets(typeId: string, offsets: number[]) { await NextGenAPI.put(`${SETTINGS_URL}/offsets/${typeId}`, { offsets }); mutate(SETTINGS_URL); }

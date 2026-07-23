@@ -15,6 +15,7 @@ import { UsersTab, HMRCTab, WorkflowTab, RiskTab } from '../components/settings/
 import { FirmSettingsTab } from '../components/settings/FirmSettingsTab';
 import { ServiceCatalogueTab } from '../components/settings/ServiceCatalogueTab';
 import { ProposalDefaultsTab } from '../components/settings/ProposalDefaultsTab';
+import { RemindersTab } from '../components/settings/RemindersTab';
 import { SponsorComplianceTab } from '../components/sponsor/SponsorComplianceTab';
 import { TeamTime } from '../components/hr/TeamTime';
 import { useAuth } from '../context/AuthContext';
@@ -32,6 +33,7 @@ export function SetupPage() {
         { id: 'proposal-defaults', label: 'Proposal Defaults', icon: FileText },
         { id: 'users', label: 'Users & Roles', icon: Users },
         { id: 'hmrc', label: 'HMRC Setup', icon: Shield },
+        { id: 'reminders', label: 'Reminders', icon: Bell },
         { id: 'workflow', label: 'Workflow Rules', icon: Zap },
         { id: 'risk', label: 'Risk Thresholds', icon: AlertTriangle },
         ...(isSuperAdmin ? [{ id: 'sponsor', label: 'Sponsor Compliance', icon: ShieldCheck }, { id: 'attendance', label: 'Team Attendance', icon: Clock }] : []),
@@ -76,6 +78,7 @@ export function SetupPage() {
                 {activeTab === 'proposal-defaults' && <ProposalDefaultsTab />}
                 {activeTab === 'users' && <UsersTab />}
                 {activeTab === 'hmrc' && <HMRCTab />}
+                {activeTab === 'reminders' && <RemindersTab />}
                 {activeTab === 'workflow' && <WorkflowTab />}
                 {activeTab === 'risk' && <RiskTab />}
                 {activeTab === 'sponsor' && isSuperAdmin && <SponsorComplianceTab />}
