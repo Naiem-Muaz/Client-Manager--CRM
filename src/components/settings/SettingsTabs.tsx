@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { errMsg } from '../../lib/errMsg';
 import { Shield, Zap, AlertTriangle, Users, Lock, X, Loader2 } from 'lucide-react';
-import { useTeamMembers, inviteTeamMember, updateTeamMember, resendInvite, cancelInvite, TeamMember, TEAM_ROLES } from '../../hooks/useTeam';
+import { useTeamMembers, inviteTeamMember, updateTeamMember, setMemberActive, useMemberActiveWork, resendInvite, cancelInvite, TeamMember, TEAM_ROLES } from '../../hooks/useTeam';
 import { useAutomationRules, toggleAutomationRule } from '../../hooks/useAutomationRules';
 
 const initials = (name: string) =>
@@ -14,10 +14,23 @@ export function UsersTab() {
     const { members, isLoading, mutate } = useTeamMembers();
     const [showInvite, setShowInvite] = useState(false);
     const [editing, setEditing] = useState<TeamMember | null>(null);
+    const [deactivating, setDeactivating] = useState<TeamMember | null>(null);
     const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
     const [busyId, setBusyId] = useState<string | null>(null);
 
     const notify = (msg: string, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 4000); };
+
+    const onReactivate = async (m: TeamMember) => {
+        if (!window.confirm(`Reactivate ${m.name}? They'll be able to log in again.`)) return;
+        setBusyId(m.id);
+        try {
+            await setMemberActive(m.id, true);
+            notify(`${m.name} reactivated.`);
+            mutate();
+        } catch (err: any) {
+            notify(errMsg(err, `Couldn't reactivate ${m.name}.`), false);
+        } finally { setBusyId(null); }
+    };
 
     const onResend = async (m: TeamMember) => {
         setBusyId(m.id);
@@ -105,7 +118,14 @@ export function UsersTab() {
                                                 </button>
                                                 <button onClick={() => onCancel(m)} disabled={busyId === m.id} className="text-red-600 hover:text-red-800 font-medium disabled:opacity-40">Cancel</button>
                                               </div>
-                                            : <button onClick={() => setEditing(m)} className="text-blue-600 hover:text-blue-800 font-medium">Edit</button>}
+                                            : <div className="flex items-center justify-end gap-3">
+                                                <button onClick={() => setEditing(m)} className="text-blue-600 hover:text-blue-800 font-medium">Edit</button>
+                                                {m.active
+                                                    ? <button onClick={() => setDeactivating(m)} className="text-red-600 hover:text-red-800 font-medium">Deactivate</button>
+                                                    : <button onClick={() => onReactivate(m)} disabled={busyId === m.id} className="text-emerald-600 hover:text-emerald-800 font-medium disabled:opacity-40 inline-flex items-center gap-1">
+                                                        {busyId === m.id && <Loader2 size={12} className="animate-spin" />}Reactivate
+                                                      </button>}
+                                              </div>}
                                     </td>
                                 </tr>
                             ))}
@@ -116,6 +136,7 @@ export function UsersTab() {
 
             {showInvite && <InviteModal onClose={() => setShowInvite(false)} onDone={() => { setShowInvite(false); mutate(); }} />}
             {editing && <EditMemberModal member={editing} onClose={() => setEditing(null)} onDone={() => { setEditing(null); mutate(); }} />}
+            {deactivating && <DeactivateModal member={deactivating} onClose={() => setDeactivating(null)} onDone={() => { setDeactivating(null); notify(`${deactivating.name} deactivated.`); mutate(); }} />}
 
             {toast && (
                 <div className={`fixed bottom-6 right-6 z-50 max-w-sm px-4 py-3 rounded-lg shadow-lg text-sm font-medium ${toast.ok ? 'bg-slate-900 text-white' : 'bg-red-600 text-white'}`}>
@@ -201,7 +222,7 @@ export const inputCls = 'w-full px-3 py-2 bg-white border border-slate-200 round
 export function Labeled({ label, children }: { label: string; children: React.ReactNode }) {
     return <div className="space-y-1"><label className="text-xs font-bold text-slate-500 uppercase tracking-wide">{label}</label>{children}</div>;
 }
-export function Modal({ title, onClose, onSubmit, saving, submitLabel, error, children }: any) {
+export function Modal({ title, onClose, onSubmit, saving, submitLabel, error, children, danger }: any) {
     return (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
@@ -215,11 +236,55 @@ export function Modal({ title, onClose, onSubmit, saving, submitLabel, error, ch
                 </div>
                 <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex justify-end gap-3">
                     <button onClick={onClose} className="px-4 py-2 text-slate-600 font-medium hover:bg-white rounded-lg text-sm">Cancel</button>
-                    <button onClick={onSubmit} disabled={saving} className="px-5 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm flex items-center gap-2">
+                    <button onClick={onSubmit} disabled={saving} className={`px-5 py-2 text-white font-semibold rounded-lg disabled:opacity-50 text-sm flex items-center gap-2 ${danger ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'}`}>
                         {saving ? <><Loader2 size={14} className="animate-spin" /> Saving…</> : submitLabel}
                     </button>
                 </div>
             </div>
+        </div>
+    );
+}
+
+// Deactivate confirmation — surfaces the member's active work (client assignments,
+// open jobs, deadlines) so an admin can reassign it before removing their access.
+// Soft + reversible: sets status='deactivated' (blocks login); Reactivate restores.
+function DeactivateModal({ member, onClose, onDone }: { member: TeamMember; onClose: () => void; onDone: () => void }) {
+    const { work, isLoading } = useMemberActiveWork(member.id);
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const confirm = async () => {
+        setSaving(true); setError(null);
+        try { await setMemberActive(member.id, false); onDone(); }
+        catch (e: any) { setError(errMsg(e, 'Failed to deactivate')); setSaving(false); }
+    };
+    const total = work?.total ?? 0;
+    return (
+        <Modal title={`Deactivate ${member.name}`} onClose={onClose} onSubmit={confirm} saving={saving} submitLabel="Deactivate" error={error} danger>
+            <p className="text-sm text-slate-600">This blocks <strong>{member.email}</strong> from logging in. Their history and audit trail stay intact, and you can reactivate them anytime.</p>
+            {isLoading ? (
+                <div className="text-sm text-slate-400 flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Checking their active work…</div>
+            ) : total === 0 ? (
+                <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2">No active clients, jobs, or deadlines assigned — safe to deactivate.</div>
+            ) : (
+                <div className="space-y-3">
+                    <div className="text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 flex items-start gap-2">
+                        <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                        <span>They still have active work. Reassign it after deactivating so nothing is dropped.</span>
+                    </div>
+                    <WorkList label="Client assignments" items={work!.clientAssignments.map(a => a.clientName)} />
+                    <WorkList label="Open jobs" items={work!.openJobs.map(j => `${j.title}${j.clientName ? ` — ${j.clientName}` : ''}`)} />
+                    <WorkList label="Open deadlines" items={work!.openDeadlines.map(d => `${d.title}${d.clientName ? ` — ${d.clientName}` : ''}`)} />
+                </div>
+            )}
+        </Modal>
+    );
+}
+function WorkList({ label, items }: { label: string; items: string[] }) {
+    if (!items.length) return null;
+    return (
+        <div>
+            <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">{label} ({items.length})</div>
+            <ul className="text-sm text-slate-700 space-y-0.5 max-h-32 overflow-y-auto">{items.map((t, i) => <li key={i} className="truncate">• {t}</li>)}</ul>
         </div>
     );
 }

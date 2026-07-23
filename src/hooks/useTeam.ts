@@ -47,6 +47,24 @@ export async function updateTeamMember(id: string, updates: Record<string, any>)
   return response.data.data || response.data;
 }
 
+// Soft (de)activation: active=false → status='deactivated' (blocks login, reversible).
+export async function setMemberActive(id: string, active: boolean) {
+  return updateTeamMember(id, { active });
+}
+
+export interface ActiveWork {
+  clientAssignments: { clientId: string; clientName: string }[];
+  openJobs: { jobId: string; title: string; dueDate?: string | null; clientName?: string | null }[];
+  openDeadlines: { deadlineId: string; title: string; dueDate?: string | null; clientName?: string | null }[];
+  total: number;
+}
+
+// The reassignment surface for the deactivate confirm — a member's live work.
+export function useMemberActiveWork(id: string | null) {
+  const { data, isLoading } = useSWR(id ? `${TEAM_URL}/${id}/active-work` : null, fetcher);
+  return { work: data as ActiveWork | undefined, isLoading };
+}
+
 // Regenerate the token + re-send the invite email for a pending invite.
 // Returns { emailSent } so the caller can surface an email-send failure.
 export async function resendInvite(id: string) {
