@@ -85,7 +85,10 @@ export function UsersTab() {
                                         <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs">{initials(m.name)}</div>
                                         <div>{m.name}<div className="text-xs text-slate-400 font-normal">{m.email}</div></div>
                                     </td>
-                                    <td className="px-6 py-4 text-slate-600">{roleLabel(m.role)}</td>
+                                    <td className="px-6 py-4 text-slate-600">
+                                        {roleLabel(m.role)}
+                                        {m.jobTitle && <div className="text-xs text-slate-400 font-normal">{m.jobTitle}</div>}
+                                    </td>
                                     <td className="px-6 py-4 text-slate-600">{m.status === 'pending' ? '—' : (m.jobCount ?? 0)}</td>
                                     <td className="px-6 py-4">
                                         {m.status === 'pending'
@@ -166,22 +169,25 @@ function InviteModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
 
 function EditMemberModal({ member, onClose, onDone }: { member: TeamMember; onClose: () => void; onDone: () => void }) {
     const [fullName, setFullName] = useState(member.name);
+    const [jobTitle, setJobTitle] = useState(member.jobTitle || '');
     const [role, setRole] = useState(member.role || 'accountant');
     const [active, setActive] = useState(member.active);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const submit = async () => {
         setSaving(true); setError(null);
-        try { await updateTeamMember(member.id, { fullName, role, active }); onDone(); }
+        try { await updateTeamMember(member.id, { fullName, jobTitle, role, active }); onDone(); }
         catch (e: any) { setError(errMsg(e, 'Failed to save')); setSaving(false); }
     };
     return (
         <Modal title="Edit team member" onClose={onClose} onSubmit={submit} saving={saving} submitLabel="Save" error={error}>
             <Labeled label="Full name"><input value={fullName} onChange={e => setFullName(e.target.value)} className={inputCls} /></Labeled>
+            <Labeled label="Job title"><input value={jobTitle} onChange={e => setJobTitle(e.target.value)} placeholder="e.g. System Designer" className={inputCls} /></Labeled>
             <Labeled label="Role">
                 <select value={role} onChange={e => setRole(e.target.value)} className={inputCls}>
                     {TEAM_ROLES.map(r => <option key={r} value={r}>{roleLabel(r)}</option>)}
                 </select>
+                <p className="text-[11px] text-slate-400 mt-1">Permission tier — separate from the job-title label above.</p>
             </Labeled>
             <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={active} onChange={e => setActive(e.target.checked)} className="w-4 h-4 text-blue-600 rounded" />

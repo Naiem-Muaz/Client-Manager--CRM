@@ -9,6 +9,7 @@ export interface TeamMember {
   name: string;          // normalised from backend `fullName`
   email: string;
   role: string | null;
+  jobTitle?: string | null;   // free-text HR label (e.g. "System Designer"); distinct from `role`
   active: boolean;
   status?: 'active' | 'pending';
   agentCode?: string | null;
