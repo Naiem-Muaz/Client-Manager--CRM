@@ -9,6 +9,7 @@ import {
     FileText,
     ShieldCheck,
     Clock,
+    Bell,
     Save
 } from 'lucide-react';
 import { UsersTab, HMRCTab, WorkflowTab, RiskTab } from '../components/settings/SettingsTabs';
