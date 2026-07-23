@@ -234,7 +234,7 @@ export function ClientDetailPage() {
 
       {activeTab === 'overview' && (
         <div className="space-y-8">
-          <ClientProfileSection client={client} />
+          <ClientProfileSection client={client} clientId={id} onSaved={() => mutateClient(`/brain/clients/${id}`)} />
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 min-h-[600px]">
               {/* Column 1: Entities */}
               <div className="h-full">
