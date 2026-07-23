@@ -12,6 +12,7 @@ import {
   Briefcase,
   FileText,
   Clock,
+  Bell,
   History,
   FileBarChart,
   CloudUpload,
@@ -46,6 +47,7 @@ export function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
     { icon: FileText, label: 'Documents', to: '/documents' },
     { icon: CheckSquare, label: 'Tasks', to: '/work' },
     { icon: Clock, label: 'Deadlines', to: '/deadlines' },
+    { icon: Bell, label: 'Reminders', to: '/reminders' },
     { icon: CloudUpload, label: 'Submissions', to: '/submissions' },
     { icon: FileBarChart, label: 'Reports', to: '/reports' },
   ];

@@ -13,6 +13,7 @@ import { TasksPage } from "./pages/TasksPage";
 import { WorkPage } from "./pages/WorkPage";
 import { DocumentsPage } from "./pages/DocumentsPage";
 import { DeadlinesPage } from "./pages/DeadlinesPage";
+import { ReminderQueuePage } from "./pages/ReminderQueuePage";
 import { ErrorBoundary as RouteErrorBoundary } from "./components/ErrorBoundary";
 import { ComplianceDashboard } from "./pages/ComplianceDashboard";
 import { SubmissionsPage } from "./pages/SubmissionsPage";
@@ -83,6 +84,7 @@ function App() {
             <Route path="/work" element={<WorkPage />} />
             <Route path="/documents" element={<DocumentsPage />} />
             <Route path="/deadlines" element={<RouteErrorBoundary label="deadlines"><DeadlinesPage /></RouteErrorBoundary>} />
+            <Route path="/reminders" element={<RouteErrorBoundary label="reminders"><ReminderQueuePage /></RouteErrorBoundary>} />
             <Route path="/submissions" element={<SubmissionsPage />} />
             <Route path="/audit" element={<AuditPage />} />
             <Route path="/setup" element={<SetupPage />} />
