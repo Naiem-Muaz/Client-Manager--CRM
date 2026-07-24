@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Bell, Loader2, Send, X, Mail, AlertTriangle, Pencil, Check } from 'lucide-react';
+import { Bell, Loader2, Send, X, Mail, AlertTriangle, Pencil, Check, CheckCircle2 } from 'lucide-react';
 import {
   useReminders, useReminderSummary, approveReminder, bulkApproveReminders,
   skipReminder, editReminder, addReminderEmail, ReminderRow,
@@ -11,30 +11,70 @@ const kindBadge = (k: string) =>
   k === 'payment'
     ? <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-700">Payment</span>
     : <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-700">Filing</span>;
+// Threshold badge — the key signal that two reminders for one client are DIFFERENT
+// (e.g. the 14-day notice vs the 7-day notice), not a duplicate that failed to send.
+const thresholdBadge = (days: number) =>
+  <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 tabular-nums">{days}-day notice</span>;
+
+interface ClientGroup { client_id: string; client_name: string; rows: ReminderRow[] }
+type GroupMode = 'client' | 'date';
 
 export function ReminderQueuePage() {
   const { summary } = useReminderSummary();
   const [tab, setTab] = useState<'pending' | 'no_email'>('pending');
+  const [groupMode, setGroupMode] = useState<GroupMode>('client');
   const { reminders, isLoading, refresh } = useReminders(tab);
   const [preview, setPreview] = useState<ReminderRow | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [justSent, setJustSent] = useState<Record<string, boolean>>({});
   const [toast, setToast] = useState<string | null>(null);
   const notify = (m: string) => { setToast(m); setTimeout(() => setToast(null), 3500); };
 
-  // Group by due date (many clients share a due date — bulk-approve per group).
-  const groups = useMemo(() => {
+  // By CLIENT — name shown once; a client's reminders (possibly different thresholds/
+  // due dates) list underneath, so siblings read as distinct, not a repeated name.
+  const clientGroups = useMemo(() => {
+    const g: Record<string, ClientGroup> = {};
+    for (const r of reminders) (g[r.client_id] ||= { client_id: r.client_id, client_name: r.client_name, rows: [] }).rows.push(r);
+    for (const k in g) g[k].rows.sort((a, b) => b.threshold_days - a.threshold_days || a.due_date.localeCompare(b.due_date));
+    return Object.values(g).sort((a, b) => a.client_name.localeCompare(b.client_name));
+  }, [reminders]);
+
+  // By DUE DATE — clusters many clients sharing a send date (e.g. SA payment-on-account)
+  // so they can be approved in a single click.
+  const dateGroups = useMemo(() => {
     const g: Record<string, ReminderRow[]> = {};
     for (const r of reminders) (g[r.due_date] ||= []).push(r);
+    for (const k in g) g[k].sort((a, b) => a.client_name.localeCompare(b.client_name) || b.threshold_days - a.threshold_days);
     return Object.entries(g).sort(([a], [b]) => a.localeCompare(b));
   }, [reminders]);
 
-  const doApprove = async (id: string) => { setBusy(id); try { await approveReminder(id); notify('Reminder sent.'); } catch { notify('Send failed.'); } finally { setBusy(null); } };
-  const doSkip = async (id: string) => { setBusy(id); try { await skipReminder(id); } finally { setBusy(null); } };
-  const doBulk = async (rows: ReminderRow[]) => {
-    const ids = rows.filter((r) => r.status === 'pending').map((r) => r.id);
-    if (!ids.length) return;
-    setBusy('bulk'); try { const r = await bulkApproveReminders(ids); notify(`Sent ${r.sent}${r.failed ? `, ${r.failed} failed` : ''}.`); } finally { setBusy(null); }
+  // Hold a "Sent ✓" state on the just-sent rows for a beat, THEN revalidate so they
+  // exit the queue — clear visual confirmation the action worked, not just a toast.
+  const flashSentThenRefresh = (ids: string[]) => {
+    setJustSent((prev) => { const n = { ...prev }; ids.forEach((id) => { n[id] = true; }); return n; });
+    setTimeout(() => {
+      setJustSent((prev) => { const n = { ...prev }; ids.forEach((id) => { delete n[id]; }); return n; });
+      refresh();
+    }, 2000);
   };
+
+  const doApprove = async (id: string) => {
+    setBusy(id);
+    try { await approveReminder(id, { refresh: false }); notify('Reminder sent.'); flashSentThenRefresh([id]); }
+    catch { notify('Send failed.'); }
+    finally { setBusy(null); }
+  };
+  const doSkip = async (id: string) => { setBusy(id); try { await skipReminder(id); } finally { setBusy(null); } };
+  // Generic bulk — sends every still-pending row in the set under one busy key.
+  const doBulk = async (key: string, rows: ReminderRow[]) => {
+    const ids = rows.filter((r) => r.status === 'pending' && !justSent[r.id]).map((r) => r.id);
+    if (!ids.length) return;
+    setBusy(key);
+    try { const r = await bulkApproveReminders(ids, { refresh: false }); notify(`Sent ${r.sent}${r.failed ? `, ${r.failed} failed` : ''}.`); flashSentThenRefresh(ids); }
+    catch { notify('Send failed.'); }
+    finally { setBusy(null); }
+  };
+  const pendingIn = (rows: ReminderRow[]) => rows.filter((r) => r.status === 'pending' && !justSent[r.id]).length;
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -57,37 +97,87 @@ export function ReminderQueuePage() {
         </div>
       </div>
 
-      {/* Ready / Blocked toggle */}
-      <div className="flex bg-slate-100 p-1 rounded-lg w-fit text-sm font-medium mb-4">
-        <button onClick={() => setTab('pending')} className={`px-4 py-1.5 rounded ${tab === 'pending' ? 'bg-white text-slate-900 shadow' : 'text-slate-500'}`}>Ready to send</button>
-        <button onClick={() => setTab('no_email')} className={`px-4 py-1.5 rounded inline-flex items-center gap-1.5 ${tab === 'no_email' ? 'bg-white text-amber-700 shadow' : 'text-slate-500'}`}>
-          <AlertTriangle size={13} /> Blocked ({summary?.blocked ?? 0})
-        </button>
+      {/* Ready / Blocked toggle + Group-by switch */}
+      <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+        <div className="flex bg-slate-100 p-1 rounded-lg w-fit text-sm font-medium">
+          <button onClick={() => setTab('pending')} className={`px-4 py-1.5 rounded ${tab === 'pending' ? 'bg-white text-slate-900 shadow' : 'text-slate-500'}`}>Ready to send</button>
+          <button onClick={() => setTab('no_email')} className={`px-4 py-1.5 rounded inline-flex items-center gap-1.5 ${tab === 'no_email' ? 'bg-white text-amber-700 shadow' : 'text-slate-500'}`}>
+            <AlertTriangle size={13} /> Blocked ({summary?.blocked ?? 0})
+          </button>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-slate-500">
+          <span className="font-medium">Group by</span>
+          <div className="flex bg-slate-100 p-1 rounded-lg font-medium">
+            <button onClick={() => setGroupMode('client')} className={`px-3 py-1 rounded ${groupMode === 'client' ? 'bg-white text-slate-900 shadow' : 'text-slate-500'}`}>Client</button>
+            <button onClick={() => setGroupMode('date')} className={`px-3 py-1 rounded ${groupMode === 'date' ? 'bg-white text-slate-900 shadow' : 'text-slate-500'}`}>Due date</button>
+          </div>
+        </div>
       </div>
 
       {isLoading ? (
         <div className="text-slate-400 text-sm flex items-center gap-2 py-8"><Loader2 className="animate-spin" size={16} /> Loading…</div>
       ) : !reminders.length ? (
         <p className="text-slate-400 text-sm text-center py-12">{tab === 'pending' ? 'No reminders waiting to send.' : 'No blocked reminders — every client here has an email. 🎉'}</p>
+      ) : groupMode === 'client' ? (
+        /* ── Grouped by client: name once, reminders (thresholds) underneath ── */
+        <div className="space-y-4">
+          {clientGroups.map((group) => {
+            const pendingCount = pendingIn(group.rows);
+            const key = `bulk-client-${group.client_id}`;
+            return (
+              <div key={group.client_id} className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border-b border-slate-100">
+                  <Link to={`/clients/${group.client_id}`} className="font-semibold text-slate-900 hover:text-blue-600 truncate">
+                    {group.client_name}
+                    <span className="text-slate-400 font-normal"> · {group.rows.length} reminder{group.rows.length === 1 ? '' : 's'}</span>
+                  </Link>
+                  {tab === 'pending' && pendingCount > 1 && (
+                    <button onClick={() => doBulk(key, group.rows)} disabled={busy === key} className="text-xs font-bold text-blue-600 hover:text-blue-800 inline-flex items-center gap-1.5 disabled:opacity-40 shrink-0">
+                      {busy === key ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} Send all ({pendingCount})
+                    </button>
+                  )}
+                </div>
+                <div className="divide-y divide-slate-100">
+                  {group.rows.map((r) => (
+                    <ReminderItem
+                      key={r.id} r={r} busy={busy === r.id} sent={!!justSent[r.id]}
+                      onPreview={() => setPreview(r)} onApprove={() => doApprove(r.id)} onSkip={() => doSkip(r.id)}
+                      onAddedEmail={() => { refresh(); notify('Email added — reminder unblocked.'); }}
+                    />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       ) : (
+        /* ── Grouped by due date: one-click "send all due {date}" for the cluster ── */
         <div className="space-y-6">
-          {groups.map(([due, rows]) => (
-            <div key={due}>
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-bold text-slate-700">Due {fmtDate(due)} <span className="text-slate-400 font-normal">· {rows.length}</span></h3>
-                {tab === 'pending' && (
-                  <button onClick={() => doBulk(rows)} disabled={busy === 'bulk'} className="text-xs font-bold text-blue-600 hover:text-blue-800 inline-flex items-center gap-1.5 disabled:opacity-40">
-                    {busy === 'bulk' ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} Approve & send all ({rows.length})
-                  </button>
-                )}
+          {dateGroups.map(([due, rows]) => {
+            const pendingCount = pendingIn(rows);
+            const key = `bulk-date-${due}`;
+            return (
+              <div key={due}>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-sm font-bold text-slate-700">Due {fmtDate(due)} <span className="text-slate-400 font-normal">· {rows.length}</span></h3>
+                  {tab === 'pending' && pendingCount > 1 && (
+                    <button onClick={() => doBulk(key, rows)} disabled={busy === key} className="text-xs font-bold text-blue-600 hover:text-blue-800 inline-flex items-center gap-1.5 disabled:opacity-40 shrink-0">
+                      {busy === key ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} Send all due {fmtDate(due)} ({pendingCount})
+                    </button>
+                  )}
+                </div>
+                <div className="bg-white border border-slate-200 rounded-xl divide-y divide-slate-100">
+                  {rows.map((r) => (
+                    <ReminderItem
+                      key={r.id} r={r} showClient busy={busy === r.id} sent={!!justSent[r.id]}
+                      onPreview={() => setPreview(r)} onApprove={() => doApprove(r.id)} onSkip={() => doSkip(r.id)}
+                      onAddedEmail={() => { refresh(); notify('Email added — reminder unblocked.'); }}
+                    />
+                  ))}
+                </div>
               </div>
-              <div className="bg-white border border-slate-200 rounded-xl divide-y divide-slate-100">
-                {rows.map((r) => (
-                  <ReminderItem key={r.id} r={r} busy={busy === r.id} onPreview={() => setPreview(r)} onApprove={() => doApprove(r.id)} onSkip={() => doSkip(r.id)} onAddedEmail={() => { refresh(); notify('Email added — reminder unblocked.'); }} />
-                ))}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -97,8 +187,8 @@ export function ReminderQueuePage() {
   );
 }
 
-function ReminderItem({ r, busy, onPreview, onApprove, onSkip, onAddedEmail }:
-  { r: ReminderRow; busy: boolean; onPreview: () => void; onApprove: () => void; onSkip: () => void; onAddedEmail: () => void }) {
+function ReminderItem({ r, busy, sent, showClient, onPreview, onApprove, onSkip, onAddedEmail }:
+  { r: ReminderRow; busy: boolean; sent: boolean; showClient?: boolean; onPreview: () => void; onApprove: () => void; onSkip: () => void; onAddedEmail: () => void }) {
   const [email, setEmail] = useState('');
   const [saving, setSaving] = useState(false);
   const addEmail = async () => {
@@ -106,14 +196,16 @@ function ReminderItem({ r, busy, onPreview, onApprove, onSkip, onAddedEmail }:
     setSaving(true); try { await addReminderEmail(r.id, email.trim()); onAddedEmail(); } finally { setSaving(false); }
   };
   return (
-    <div className="px-4 py-3 flex items-center gap-3">
+    <div className={`px-4 py-3 flex items-center gap-3 transition-colors ${sent ? 'bg-emerald-50' : ''}`}>
       <div className="flex-1 min-w-0">
+        {/* Client name (date-mode only) + threshold + kind — siblings read as distinct */}
         <div className="flex items-center gap-2 flex-wrap">
-          <Link to={`/clients/${r.client_id}`} className="font-semibold text-slate-900 hover:text-blue-600 truncate">{r.client_name}</Link>
+          {showClient && <Link to={`/clients/${r.client_id}`} className="font-semibold text-slate-900 hover:text-blue-600 truncate mr-1">{r.client_name}</Link>}
+          {thresholdBadge(r.threshold_days)}
           {kindBadge(r.template_kind)}
-          <span className="text-xs text-slate-400">{r.days_out} day{r.days_out === 1 ? '' : 's'} out</span>
+          <span className="text-xs text-slate-400">due {fmtDate(r.due_date)} · {r.days_out} day{r.days_out === 1 ? '' : 's'} out</span>
         </div>
-        <div className="text-sm text-slate-500 truncate">{r.deadline_name}</div>
+        <div className="text-sm text-slate-600 truncate mt-0.5">{r.deadline_name}</div>
         {r.status === 'no_email' ? (
           <div className="mt-2 flex items-center gap-1.5">
             <Mail size={14} className="text-amber-600 shrink-0" />
@@ -128,13 +220,20 @@ function ReminderItem({ r, busy, onPreview, onApprove, onSkip, onAddedEmail }:
         )}
       </div>
       <div className="flex items-center gap-2 shrink-0">
-        <button onClick={onPreview} className="text-slate-400 hover:text-slate-700 p-1.5" title="Preview / edit"><Pencil size={15} /></button>
-        {r.status === 'pending' && (
-          <button onClick={onApprove} disabled={busy} className="text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded disabled:opacity-40 inline-flex items-center gap-1.5">
-            {busy ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} Send
-          </button>
+        {sent ? (
+          // Brief per-row confirmation before the row drops out of the queue.
+          <span className="text-xs font-bold text-emerald-700 inline-flex items-center gap-1.5 px-2 py-1.5"><CheckCircle2 size={15} /> Sent</span>
+        ) : (
+          <>
+            <button onClick={onPreview} className="text-slate-400 hover:text-slate-700 p-1.5" title="Preview / edit"><Pencil size={15} /></button>
+            {r.status === 'pending' && (
+              <button onClick={onApprove} disabled={busy} className="text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded disabled:opacity-40 inline-flex items-center gap-1.5">
+                {busy ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} Send
+              </button>
+            )}
+            <button onClick={onSkip} disabled={busy} className="text-xs font-medium text-slate-500 hover:text-slate-700 px-2 py-1.5 disabled:opacity-40">Skip</button>
+          </>
         )}
-        <button onClick={onSkip} disabled={busy} className="text-xs font-medium text-slate-500 hover:text-slate-700 px-2 py-1.5 disabled:opacity-40">Skip</button>
       </div>
     </div>
   );

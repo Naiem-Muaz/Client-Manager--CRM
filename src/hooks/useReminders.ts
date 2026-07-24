@@ -39,8 +39,10 @@ export function useReminders(status?: string) {
 
 const refreshAll = () => { mutate(listUrl('pending')); mutate(listUrl('no_email')); mutate(listUrl()); mutate(SUMMARY_URL); };
 
-export async function approveReminder(id: string) { await NextGenAPI.post(`/brain/reminders/${id}/approve`); refreshAll(); }
-export async function bulkApproveReminders(ids: string[]) { const r = await NextGenAPI.post('/brain/reminders/bulk-approve', { ids }); refreshAll(); return r.data.data as { sent: number; failed: number; skipped: number }; }
+// `refresh: false` lets the caller defer the list revalidation (e.g. to hold a
+// "Sent ✓" confirmation on the row for a beat before it drops out of the queue).
+export async function approveReminder(id: string, opts?: { refresh?: boolean }) { await NextGenAPI.post(`/brain/reminders/${id}/approve`); if (opts?.refresh !== false) refreshAll(); }
+export async function bulkApproveReminders(ids: string[], opts?: { refresh?: boolean }) { const r = await NextGenAPI.post('/brain/reminders/bulk-approve', { ids }); if (opts?.refresh !== false) refreshAll(); return r.data.data as { sent: number; failed: number; skipped: number }; }
 export async function skipReminder(id: string) { await NextGenAPI.post(`/brain/reminders/${id}/skip`); refreshAll(); }
 export async function editReminder(id: string, updates: { subject?: string; body_html?: string }) { await NextGenAPI.patch(`/brain/reminders/${id}`, updates); refreshAll(); }
 export async function addReminderEmail(id: string, email: string) { await NextGenAPI.post(`/brain/reminders/${id}/add-email`, { email }); refreshAll(); }
