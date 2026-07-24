@@ -7,6 +7,7 @@ import {
 } from '../hooks/useReminders';
 
 const fmtDate = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+const fmtSentAt = (iso?: string | null) => iso ? new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
 const kindBadge = (k: string) =>
   k === 'payment'
     ? <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-700">Payment</span>
@@ -17,11 +18,12 @@ const thresholdBadge = (days: number) =>
   <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 tabular-nums">{days}-day notice</span>;
 
 interface ClientGroup { client_id: string; client_name: string; rows: ReminderRow[] }
+type Tab = 'pending' | 'no_email' | 'sent';
 type GroupMode = 'client' | 'date';
 
 export function ReminderQueuePage() {
   const { summary } = useReminderSummary();
-  const [tab, setTab] = useState<'pending' | 'no_email'>('pending');
+  const [tab, setTab] = useState<Tab>('pending');
   const [groupMode, setGroupMode] = useState<GroupMode>('client');
   const { reminders, isLoading, refresh } = useReminders(tab);
   const [preview, setPreview] = useState<ReminderRow | null>(null);
@@ -91,33 +93,60 @@ export function ReminderQueuePage() {
           <div className="text-2xl font-black text-amber-700">{summary?.blocked ?? '—'}</div>
           <div className="text-xs font-medium text-amber-700">blocked — no contact email</div>
         </div>
-        <div className="flex-1 min-w-[180px] bg-white border border-slate-200 rounded-xl px-4 py-3">
+        <button onClick={() => setTab('sent')} className="flex-1 min-w-[180px] bg-white border border-slate-200 rounded-xl px-4 py-3 text-left hover:border-emerald-300 transition-colors">
           <div className="text-2xl font-black text-emerald-600">{summary?.sent ?? '—'}</div>
-          <div className="text-xs font-medium text-slate-500">sent</div>
-        </div>
+          <div className="text-xs font-medium text-slate-500">sent · view history</div>
+        </button>
       </div>
 
-      {/* Ready / Blocked toggle + Group-by switch */}
+      {/* Ready / Blocked / Sent toggle + Group-by switch */}
       <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
         <div className="flex bg-slate-100 p-1 rounded-lg w-fit text-sm font-medium">
           <button onClick={() => setTab('pending')} className={`px-4 py-1.5 rounded ${tab === 'pending' ? 'bg-white text-slate-900 shadow' : 'text-slate-500'}`}>Ready to send</button>
           <button onClick={() => setTab('no_email')} className={`px-4 py-1.5 rounded inline-flex items-center gap-1.5 ${tab === 'no_email' ? 'bg-white text-amber-700 shadow' : 'text-slate-500'}`}>
             <AlertTriangle size={13} /> Blocked ({summary?.blocked ?? 0})
           </button>
+          <button onClick={() => setTab('sent')} className={`px-4 py-1.5 rounded inline-flex items-center gap-1.5 ${tab === 'sent' ? 'bg-white text-emerald-700 shadow' : 'text-slate-500'}`}>
+            <CheckCircle2 size={13} /> Sent
+          </button>
         </div>
-        <div className="flex items-center gap-2 text-xs text-slate-500">
-          <span className="font-medium">Group by</span>
-          <div className="flex bg-slate-100 p-1 rounded-lg font-medium">
-            <button onClick={() => setGroupMode('client')} className={`px-3 py-1 rounded ${groupMode === 'client' ? 'bg-white text-slate-900 shadow' : 'text-slate-500'}`}>Client</button>
-            <button onClick={() => setGroupMode('date')} className={`px-3 py-1 rounded ${groupMode === 'date' ? 'bg-white text-slate-900 shadow' : 'text-slate-500'}`}>Due date</button>
+        {tab !== 'sent' && (
+          <div className="flex items-center gap-2 text-xs text-slate-500">
+            <span className="font-medium">Group by</span>
+            <div className="flex bg-slate-100 p-1 rounded-lg font-medium">
+              <button onClick={() => setGroupMode('client')} className={`px-3 py-1 rounded ${groupMode === 'client' ? 'bg-white text-slate-900 shadow' : 'text-slate-500'}`}>Client</button>
+              <button onClick={() => setGroupMode('date')} className={`px-3 py-1 rounded ${groupMode === 'date' ? 'bg-white text-slate-900 shadow' : 'text-slate-500'}`}>Due date</button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {isLoading ? (
         <div className="text-slate-400 text-sm flex items-center gap-2 py-8"><Loader2 className="animate-spin" size={16} /> Loading…</div>
       ) : !reminders.length ? (
-        <p className="text-slate-400 text-sm text-center py-12">{tab === 'pending' ? 'No reminders waiting to send.' : 'No blocked reminders — every client here has an email. 🎉'}</p>
+        <p className="text-slate-400 text-sm text-center py-12">{tab === 'pending' ? 'No reminders waiting to send.' : tab === 'sent' ? 'No reminders sent yet.' : 'No blocked reminders — every client here has an email. 🎉'}</p>
+      ) : tab === 'sent' ? (
+        /* ── Sent history: chronological (most recent first), read-only ── */
+        <div className="bg-white border border-slate-200 rounded-xl divide-y divide-slate-100">
+          {reminders.map((r) => (
+            <div key={r.id} className="px-4 py-3 flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Link to={`/clients/${r.client_id}`} className="font-semibold text-slate-900 hover:text-blue-600 truncate">{r.client_name}</Link>
+                  {thresholdBadge(r.threshold_days)}
+                  {kindBadge(r.template_kind)}
+                </div>
+                <div className="text-sm text-slate-600 truncate mt-0.5">{r.deadline_name}</div>
+                {r.to_email && <div className="text-xs text-slate-400 mt-0.5 inline-flex items-center gap-1"><Mail size={12} /> {r.to_email}</div>}
+              </div>
+              <div className="text-right shrink-0">
+                <div className="text-xs font-bold text-emerald-700 inline-flex items-center gap-1.5"><CheckCircle2 size={14} /> Sent {fmtSentAt(r.sent_at)}</div>
+                {r.reviewed_by_name && <div className="text-[11px] text-slate-400 mt-0.5">by {r.reviewed_by_name}</div>}
+              </div>
+              <button onClick={() => setPreview(r)} className="text-slate-400 hover:text-slate-700 p-1.5 shrink-0" title="View sent email"><Pencil size={15} /></button>
+            </div>
+          ))}
+        </div>
       ) : groupMode === 'client' ? (
         /* ── Grouped by client: name once, reminders (thresholds) underneath ── */
         <div className="space-y-4">
@@ -240,6 +269,7 @@ function ReminderItem({ r, busy, sent, showClient, onPreview, onApprove, onSkip,
 }
 
 function PreviewModal({ r, onClose, onSaved }: { r: ReminderRow; onClose: () => void; onSaved: () => void }) {
+  const alreadySent = r.status === 'sent';
   const [subject, setSubject] = useState(r.subject);
   const [body, setBody] = useState(r.body_html);
   const [editing, setEditing] = useState(false);
@@ -249,7 +279,7 @@ function PreviewModal({ r, onClose, onSaved }: { r: ReminderRow; onClose: () => 
     <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden">
         <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-          <div><h3 className="font-bold text-slate-900">Reminder preview</h3><p className="text-xs text-slate-500">{r.client_name} · {r.deadline_name}</p></div>
+          <div><h3 className="font-bold text-slate-900">{alreadySent ? 'Sent reminder' : 'Reminder preview'}</h3><p className="text-xs text-slate-500">{r.client_name} · {r.deadline_name}{alreadySent && r.sent_at ? ` · sent ${new Date(r.sent_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}</p></div>
           <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full text-slate-400"><X size={18} /></button>
         </div>
         <div className="p-5 overflow-y-auto space-y-3">
@@ -267,10 +297,12 @@ function PreviewModal({ r, onClose, onSaved }: { r: ReminderRow; onClose: () => 
           </div>
         </div>
         <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex justify-end gap-2">
-          {editing
-            ? <><button onClick={() => { setEditing(false); setSubject(r.subject); setBody(r.body_html); }} className="px-3 py-2 text-slate-600 text-sm font-medium">Cancel</button>
-              <button onClick={save} disabled={saving} className="px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 inline-flex items-center gap-2">{saving ? <Loader2 size={14} className="animate-spin" /> : null} Save draft</button></>
-            : <button onClick={() => setEditing(true)} className="px-4 py-2 bg-white border border-slate-200 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-50 inline-flex items-center gap-2"><Pencil size={14} /> Edit before send</button>}
+          {alreadySent
+            ? <button onClick={onClose} className="px-4 py-2 bg-white border border-slate-200 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-50">Close</button>
+            : editing
+              ? <><button onClick={() => { setEditing(false); setSubject(r.subject); setBody(r.body_html); }} className="px-3 py-2 text-slate-600 text-sm font-medium">Cancel</button>
+                <button onClick={save} disabled={saving} className="px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 inline-flex items-center gap-2">{saving ? <Loader2 size={14} className="animate-spin" /> : null} Save draft</button></>
+              : <button onClick={() => setEditing(true)} className="px-4 py-2 bg-white border border-slate-200 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-50 inline-flex items-center gap-2"><Pencil size={14} /> Edit before send</button>}
         </div>
       </div>
     </div>

@@ -19,6 +19,8 @@ export interface ReminderRow {
   client_name: string;
   deadline_name: string;
   deadline_type_code: string;
+  sent_at?: string | null;
+  reviewed_by_name?: string | null;
 }
 export interface ReminderSummary { ready: number; blocked: number; sent: number }
 
@@ -37,7 +39,7 @@ export function useReminders(status?: string) {
   };
 }
 
-const refreshAll = () => { mutate(listUrl('pending')); mutate(listUrl('no_email')); mutate(listUrl()); mutate(SUMMARY_URL); };
+const refreshAll = () => { mutate(listUrl('pending')); mutate(listUrl('no_email')); mutate(listUrl('sent')); mutate(listUrl()); mutate(SUMMARY_URL); };
 
 // `refresh: false` lets the caller defer the list revalidation (e.g. to hold a
 // "Sent ✓" confirmation on the row for a beat before it drops out of the queue).
