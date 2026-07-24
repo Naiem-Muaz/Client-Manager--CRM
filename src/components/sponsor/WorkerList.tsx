@@ -4,6 +4,7 @@ import { useSponsorWorkers, createWorker, Worker } from '../../hooks/useSponsorC
 import { errMsg } from '../../lib/errMsg';
 import { fmtDate, fmtMoney, dateBand, DATE_BAND_CLS, salaryChip, chipBase, prettify } from './format';
 import { WorkerForm } from './WorkerForm';
+import { useTeamMembers } from '../../hooks/useTeam';
 import { Avatar, ViewHeader, EmptyState, TableCard, th, td, btnPrimary } from './ui';
 
 function AlertBadge({ worker }: { worker: Worker }) {
@@ -81,6 +82,8 @@ export function WorkerList({ onSelect }: { onSelect: (id: string) => void }) {
 }
 
 function CreateWorkerModal({ onClose, onDone }: { onClose: () => void; onDone: (id?: string) => void }) {
+  const { members } = useTeamMembers();
+  const staffOptions = members.filter(m => m.status !== 'pending').map(m => ({ id: m.id, name: m.name, email: m.email }));
   const [form, setForm] = useState<Record<string, any>>({ visaRoute: 'skilled_worker', status: 'active', rosterType: 'fixed', contractedWeekdays: [1, 2, 3, 4, 5] });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -108,7 +111,7 @@ function CreateWorkerModal({ onClose, onDone }: { onClose: () => void; onDone: (
           <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg"><X size={18} /></button>
         </header>
         <div className="flex-1 overflow-y-auto px-6 py-5">
-          <WorkerForm value={form} onChange={set} />
+          <WorkerForm value={form} onChange={set} staffOptions={staffOptions} />
         </div>
         <footer className="flex items-center gap-3 px-6 py-4 border-t border-slate-200 bg-white rounded-b-2xl">
           {error && <span className="text-sm text-rose-600">{error}</span>}

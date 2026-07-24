@@ -32,6 +32,7 @@ export function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
   const { user, logout } = useAuth();
   const navItems = [
     { icon: LayoutDashboard, label: 'Dashboard', to: '/' },
+    { icon: Clock, label: 'My Time', to: '/my-time' },
     { icon: ShieldAlert, label: 'Compliance', to: '/compliance' },
     { icon: Zap, label: 'MTD', to: '/mtd' },
     { icon: Users, label: 'Clients', to: '/clients' },
@@ -171,8 +172,8 @@ export function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
           <div className="flex items-center gap-2.5 px-2 py-2">
             <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-slate-300 flex-shrink-0"><UserIcon size={16} /></div>
             <div className="min-w-0">
-              <div className="text-sm text-white font-medium truncate">{user?.email || roleLabel(user?.role)}</div>
-              {user?.email && <div className="text-[11px] text-slate-400">{roleLabel(user?.role)}</div>}
+              <div className="text-sm text-white font-medium truncate">{user?.name || user?.email || roleLabel(user?.role)}</div>
+              {(user?.name || user?.email) && <div className="text-[11px] text-slate-400">{roleLabel(user?.role)}</div>}
             </div>
           </div>
         )}

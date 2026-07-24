@@ -8,6 +8,7 @@ export interface User {
   email: string;
   role: string;
   organisation_id: string;
+  name?: string;
 }
 
 interface AuthContextType {
@@ -46,7 +47,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               id: decoded.user_id || decoded.sub || decoded.id,
               email: decoded.email ?? '',
               role: decoded.role,
-              organisation_id: decoded.organisation_id
+              organisation_id: decoded.organisation_id,
+              // Additive: present only in tokens minted after the display_name claim
+              // change; older tokens simply leave this undefined (falls back to role).
+              name: decoded.display_name ?? undefined
             });
             setAuthToken(token);
           }
