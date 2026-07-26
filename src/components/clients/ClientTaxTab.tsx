@@ -3,9 +3,21 @@ import { Lock, Unlock, FileText, AlertTriangle, ShieldCheck, PenTool } from 'luc
 import { ClientAuthority } from '../../types/ClientAuthority';
 import { useCompliance } from '../../hooks/useCompliance';
 
-const TaxServiceCard = ({ type, serviceId, hasEngagement, authority }: { type: string, serviceId: 'SA' | 'CT' | 'VAT' | 'PAYE', hasEngagement: boolean, authority: ClientAuthority }) => {
-    // Check Compliance
-    const { isCompliant, missingRequirements } = useCompliance(serviceId, hasEngagement, authority);
+const TaxServiceCard = ({ type, serviceId, hasEngagement, authority }: { type: string, serviceId: 'SA' | 'CT' | 'VAT' | 'PAYE', hasEngagement?: boolean, authority?: ClientAuthority }) => {
+    // Compliance state is UNKNOWN until it is wired to engagements.signed_at and
+    // client_hmrc_authorisations. It used to come from hardcoded props
+    // (hasEngagement=true, sa/ct/vat='Authorized') that were passed for every
+    // client, so a service showed UNLOCKED on fabricated compliance.
+    //
+    // Unknown FAILS CLOSED: locked, with an explicit "not verified" reason rather
+    // than a list of satisfied requirements. Unlocking a tax service on a
+    // compliance check that never ran is the one outcome that must not happen.
+    const unknown = hasEngagement === undefined || authority === undefined;
+    const checked = useCompliance(serviceId, hasEngagement ?? false, authority ?? ({} as ClientAuthority));
+    const isCompliant = unknown ? false : checked.isCompliant;
+    const missingRequirements = unknown
+        ? ['engagement and HMRC authority not verified']
+        : checked.missingRequirements;
 
     return (
         <div className={`rounded-xl border p-6 flex flex-col justify-between h-72 relative overflow-hidden transition-all ${
@@ -53,10 +65,10 @@ const TaxServiceCard = ({ type, serviceId, hasEngagement, authority }: { type: s
     );
 };
 
-export function ClientTaxTab({ client, hasEngagement, authority }: { client: any, hasEngagement: boolean, authority: ClientAuthority }) {
+export function ClientTaxTab({ client, hasEngagement, authority }: { client: any, hasEngagement?: boolean, authority?: ClientAuthority }) {
     return (
         <div className="space-y-6">
-            <div className={`border rounded-xl p-4 flex items-start gap-3 ${hasEngagement ? 'bg-blue-50 border-blue-200' : 'bg-red-50 border-red-200'}`}>
+            <div className={`border rounded-xl p-4 flex items-start gap-3 ${hasEngagement === undefined ? 'bg-slate-50 border-slate-200' : (hasEngagement ? 'bg-blue-50 border-blue-200' : 'bg-red-50 border-red-200')}`}>
                 {hasEngagement ? <ShieldCheck size={20} className="text-blue-600 shrink-0 mt-0.5" /> : <Lock size={20} className="text-red-600 shrink-0 mt-0.5" />}
                 <div className="text-sm">
                     <h4 className={`font-bold ${hasEngagement ? 'text-blue-900' : 'text-red-900'}`}>{hasEngagement ? 'Compliance Engine Active' : 'Access Restricted'}</h4>

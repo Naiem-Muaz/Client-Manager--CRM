@@ -4,14 +4,22 @@ import { ClientAuthority } from '../../types/ClientAuthority';
 
 export function ClientDetailTopBar({ hasEngagement, authority }: { hasEngagement?: boolean, authority?: ClientAuthority }) {
     
-    // Derived status strings for display
-    const engagementStatus = hasEngagement ? 'Signed' : 'Pending';
-    const engagementColor = hasEngagement ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-red-50 text-red-700 border-red-100';
-    
-    // Check if at least one service is authorized
+    // undefined ⇒ NOT CHECKED, which is not the same as "Pending"/"Missing" and
+    // certainly not "Signed"/"Authorized". These badges previously showed green
+    // for every client off hardcoded state; a slate "not checked" is the only
+    // honest rendering until they are wired to engagements.signed_at and
+    // client_hmrc_authorisations.
+    const UNKNOWN = 'bg-slate-50 text-slate-500 border-slate-200';
+    const engagementStatus = hasEngagement === undefined ? 'not checked' : (hasEngagement ? 'Signed' : 'Pending');
+    const engagementColor = hasEngagement === undefined
+        ? UNKNOWN
+        : (hasEngagement ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-red-50 text-red-700 border-red-100');
+
     const isAuthorized = authority && Object.values(authority).some(v => v === 'Authorized');
-    const authorityStatus = isAuthorized ? 'Authorized' : 'Missing';
-    const authorityColor = isAuthorized ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100';
+    const authorityStatus = authority === undefined ? 'not checked' : (isAuthorized ? 'Authorized' : 'Missing');
+    const authorityColor = authority === undefined
+        ? UNKNOWN
+        : (isAuthorized ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100');
 
     return (
         <div className="flex items-center gap-6">

@@ -30,7 +30,6 @@ import { ClientSnapshotsTab } from '../components/clients/ClientSnapshotsTab';
 import { ClientHmrcTab } from '../components/clients/ClientHmrcTab';
 import { ClientDeadlinesTab } from '../components/clients/ClientDeadlinesTab';
 import { ClientUpcomingDeadlinesCard } from '../components/clients/ClientUpcomingDeadlinesCard';
-import { ComplianceSimulator } from '../components/dev/ComplianceSimulator';
 import { CompaniesHousePanel } from '../components/clients/CompaniesHousePanel';
 import { ClientComplianceDatesCard } from '../components/clients/ClientComplianceDatesCard';
 import { ClientHealthScoreCard } from '../components/clients/ClientHealthScoreCard';
@@ -39,13 +38,20 @@ import { ActivityFeed } from '../components/clients/ActivityFeed';
 import { ClientAuthority, DEFAULT_AUTHORITY } from '../types/ClientAuthority';
 import { entityKey, ENTITY_META } from '../lib/entityType';
 
-const MOCK_STARTING_AUTHORITY: ClientAuthority = {
-    ...DEFAULT_AUTHORITY,
-    sa: 'Authorized',
-    ct: 'Authorized',
-    vat: 'Authorized',
-    paye: 'None'
-};
+// MOCK_STARTING_AUTHORITY REMOVED. It hardcoded sa/ct/vat = 'Authorized' for
+// EVERY client, which the top bar rendered as a green "HMRC: Authorized" badge.
+// Paired with hasEngagement=useState(true) — a green "Engagement: Signed" badge
+// for every client, when 2 of 15 engagements are actually signed.
+//
+// ComplianceSimulator (components/dev/) was rendered UNGATED on this page and let
+// anyone toggle both from the UI. It was removed rather than env-gated: a control
+// that flips a compliance gate should not exist in the shipped bundle at all, and
+// the badges it toggled were fabricated whether or not anyone touched it.
+//
+// Both are now passed as undefined, which the top bar renders as "not checked".
+// Wiring them to client_manager.engagements.signed_at and
+// client_manager.client_hmrc_authorisations is a real task, tracked in HANDOFF.md
+// under "fabricated data rendered as real".
 
 import { useClientDetails as useClient, archiveClient, unarchiveClient } from '../hooks/useClients';
 import { DeleteClientModal } from '../components/clients/DeleteClientModal';
@@ -71,8 +77,7 @@ export function ClientDetailPage() {
   const isSuperAdmin = user?.role === 'super_admin';
 
   // State for Compliance Simulation
-  const [hasEngagement, setHasEngagement] = useState(true);
-  const [authority, setAuthority] = useState<ClientAuthority>(MOCK_STARTING_AUTHORITY);
+
 
   const ek = client ? entityKey(client.entityType) : 'other';
   const entityMeta = ENTITY_META[ek];
@@ -97,7 +102,7 @@ export function ClientDetailPage() {
                 <ArrowLeft size={16} />
                 Back to Clients
             </Link>
-            <ClientDetailTopBar hasEngagement={hasEngagement} authority={authority} />
+            <ClientDetailTopBar />
       </div>
 
       {/* Header Card */}
@@ -274,19 +279,13 @@ export function ClientDetailPage() {
       {activeTab === 'transactions' && <ClientTransactionsTab clientId={client.id} clientName={client.legalName} />}
       {activeTab === 'snapshots' && <ClientSnapshotsTab clientId={client.id} />}
       {activeTab === 'accounting' && <ClientReviewTab clientId={client.id} />}
-      {activeTab === 'tax' && <ClientTaxTab client={client} hasEngagement={hasEngagement} authority={authority} />}
+      {activeTab === 'tax' && <ClientTaxTab client={client} />}
       {activeTab === 'hmrc' && <ClientHmrcTab clientId={client.id} />}
       {activeTab === 'documents' && <ClientDocumentsTab client={client} />}
       {activeTab === 'engagement' && <ClientEngagementTab clientId={client.id} />}
       {activeTab === 'deadlines' && <ClientDeadlinesTab clientId={client.id} onNavigate={setActiveTab} />}
       {activeTab === 'activity' && <ActivityFeed clientId={client.id} onOpenTab={(tab) => { if (['documents', 'deadlines', 'engagement', 'transactions', 'hmrc'].includes(tab)) setActiveTab(tab); }} />}
       
-      <ComplianceSimulator
-        hasEngagement={hasEngagement}
-        setHasEngagement={setHasEngagement}
-        authority={authority}
-        setAuthority={setAuthority}
-      />
 
       {showDelete && (
         <DeleteClientModal
