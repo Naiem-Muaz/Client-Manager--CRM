@@ -1,0 +1,53 @@
+{
+  // ─────────────────────────────────────────────────────────────────────────
+  // This repo had NO tsconfig.json, which meant `tsc --noEmit` could not run
+  // project-wide and the standing rule "verify CRM changes with tsc --noEmit,
+  // not just vite build" was never actually executable.
+  //
+  // That rule exists because `vite build` uses esbuild, which TRANSPILES without
+  // type-checking: it happily emits a bundle containing an undefined identifier
+  // or a missing import. A missing icon import took SetupPage down in
+  // production — a green build, a white screen.
+  //
+  // `paths` mirrors vite.config.ts resolve.alias exactly ("@" -> ./src). If one
+  // changes, change the other: a mismatch means tsc and the bundler disagree
+  // about what resolves, which is worse than no tsconfig at all.
+  // ─────────────────────────────────────────────────────────────────────────
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+
+    // Type-check only. Vite owns emission.
+    "noEmit": true,
+    "isolatedModules": true,
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+
+    // skipLibCheck: do not type-check node_modules .d.ts files. Standard for an
+    // app; without it third-party type conflicts drown out our own errors.
+    "skipLibCheck": true,
+
+    // strict is OFF deliberately, for now. Turning it on today produces hundreds
+    // of pre-existing errors and the rule this file exists to enable would be
+    // unusable from day one. The point is to catch missing imports and undefined
+    // identifiers — which it does without strict. Tightening is a separate,
+    // deliberate job.
+    "strict": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noFallthroughCasesInSwitch": true,
+
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist", ".claude"]
+}
