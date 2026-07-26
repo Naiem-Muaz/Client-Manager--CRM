@@ -1,0 +1,33 @@
+#!/bin/sh
+# ─────────────────────────────────────────────────────────────────────────────
+# Pre-push gate: TYPE-CHECK, not just build.
+#
+# `vite build` uses esbuild, which transpiles WITHOUT type-checking — it emits a
+# bundle containing a missing import quite happily. That is how a missing icon
+# import took SetupPage down in production: green build, white screen.
+#
+# The baseline is ZERO errors. It was 8 (two dead files referencing seven absent
+# modules); those were deleted rather than tolerated, because a permanently-red
+# gate is one people learn to ignore.
+#
+# Enable once per clone:   git config core.hooksPath .githooks
+# (npm's `prepare` script does this automatically on `npm install`.)
+#
+# Emergency bypass:        SKIP_TYPECHECK=1 git push
+# ─────────────────────────────────────────────────────────────────────────────
+set -e
+
+if [ "$SKIP_TYPECHECK" = "1" ]; then
+  echo "⚠️  pre-push: typecheck SKIPPED via SKIP_TYPECHECK=1 — say so in the PR."
+  exit 0
+fi
+
+echo "▸ pre-push: tsc --noEmit (baseline is 0 errors)"
+if ! npm run --silent typecheck; then
+  echo ""
+  echo "✗ pre-push BLOCKED: TypeScript errors above."
+  echo "  vite build would have succeeded anyway — that is the point of this gate."
+  echo "  Genuine emergency: SKIP_TYPECHECK=1 git push"
+  exit 1
+fi
+echo "✓ pre-push: typecheck clean"
