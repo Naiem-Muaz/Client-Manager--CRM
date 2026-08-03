@@ -93,7 +93,17 @@ export const issuesBySection = (issues: BlockingIssue[]): Record<string, Blockin
 export const STATUS_META: Record<IncorporationStatus, { label: string; chip: string; dot: string }> = {
   draft:         { label: 'Draft',         chip: 'bg-slate-100 text-slate-600',   dot: 'bg-slate-400' },
   ready_to_file: { label: 'Ready to file', chip: 'bg-blue-50 text-blue-700',      dot: 'bg-blue-500' },
-  submitted:     { label: 'Submitted',     chip: 'bg-indigo-50 text-indigo-700',  dot: 'bg-indigo-500' },
+  // ⚠️ 'Marked as filed', not 'Submitted'. Guided WebFiling is MANUAL — an
+  // accountant files on the Companies House website themselves and then records
+  // that they did. This system never talks to Companies House on that route and
+  // has no way to know whether the filing was received; `checkStatus` returns the
+  // stored value unchanged, because there is nothing to check against.
+  //
+  // The database column stays `submitted_at` — it is a legitimate intent record
+  // and renaming it would touch every reader. THE LABEL IS WHERE THE FALSEHOOD
+  // WOULD LAND, so the label is what changed: it now says a person marked it,
+  // which is the only thing anyone here actually observed.
+  submitted:     { label: 'Marked as filed', chip: 'bg-indigo-50 text-indigo-700',  dot: 'bg-indigo-500' },
   accepted:      { label: 'Accepted',      chip: 'bg-emerald-50 text-emerald-700', dot: 'bg-emerald-500' },
   rejected:      { label: 'Rejected',      chip: 'bg-rose-50 text-rose-700',      dot: 'bg-rose-500' },
   onboarded:     { label: 'Onboarded',     chip: 'bg-emerald-100 text-emerald-800', dot: 'bg-emerald-600' },
