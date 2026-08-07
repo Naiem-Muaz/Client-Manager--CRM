@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Inbox, Loader2, Paperclip, CalendarClock, User as UserIcon } from 'lucide-react';
+import { Inbox, Loader2, Paperclip, CalendarClock, User as UserIcon, AtSign } from 'lucide-react';
 import { useInbox, useInboxCounts, InboxMessage, InboxTab } from '../hooks/useInbox';
 import { MessageDrawer } from '../components/inbox/MessageDrawer';
 
@@ -25,9 +25,14 @@ const TAB_LABELS: Record<InboxTab, string> = {
 
 export function InboxPage() {
   const [tab, setTab] = useState<InboxTab>('unassigned');
+  const [mentionedOnly, setMentionedOnly] = useState(false);
   const { counts, mutate: refreshCounts } = useInboxCounts();
-  const { messages, isLoading, mutate } = useInbox(tab);
-  const [openId, setOpenId] = useState<string | null>(null);
+  const { messages, isLoading, mutate } = useInbox(tab, { mentionedMe: mentionedOnly });
+  // ?message=<id> is the email deep link — read ONCE on mount to open the drawer;
+  // view state does not otherwise sync to the URL (repo convention).
+  const [openId, setOpenId] = useState<string | null>(
+    () => new URLSearchParams(window.location.search).get('message')
+  );
 
   const onChanged = () => { mutate(); refreshCounts(); };
 
@@ -35,7 +40,16 @@ export function InboxPage() {
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
-      <div className="flex items-center gap-3 mb-1"><Inbox className="text-blue-600" size={22} /><h1 className="text-xl font-bold text-slate-900">Inbox</h1></div>
+      <div className="flex items-center gap-3 mb-1">
+        <Inbox className="text-blue-600" size={22} /><h1 className="text-xl font-bold text-slate-900">Inbox</h1>
+        {(counts?.mentions ?? 0) > 0 && (
+          <button onClick={() => setMentionedOnly(v => !v)}
+            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold border transition-colors ${
+              mentionedOnly ? 'bg-blue-600 text-white border-blue-600' : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'}`}>
+            <AtSign size={12} /> Mentions ({counts!.mentions})
+          </button>
+        )}
+      </div>
       <p className="text-slate-500 text-sm mb-5">Emails forwarded from the practice mailbox. Triage, assign and track them here; reply from your own mailbox.</p>
 
       {/* Headline counts (ReminderQueuePage idiom) */}

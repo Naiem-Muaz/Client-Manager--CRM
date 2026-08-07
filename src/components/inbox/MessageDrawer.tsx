@@ -1,9 +1,32 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { X, ExternalLink, Check, Loader2, Paperclip, Mail, AlarmClock, CheckCircle2, RotateCcw } from 'lucide-react';
-import { useInboxMessage, updateInboxMessage, InboxStatus } from '../../hooks/useInbox';
+import { X, ExternalLink, Check, Loader2, Paperclip, Mail, AlarmClock, CheckCircle2, RotateCcw, Send } from 'lucide-react';
+import { useInboxMessage, updateInboxMessage, addInboxComment, InboxStatus, InboxComment } from '../../hooks/useInbox';
 import { useTeamMembers } from '../../hooks/useTeam';
 import { errMsg } from '../../lib/errMsg';
+
+const initials = (name?: string | null) => (name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+
+// Highlight each mentioned "@Display Name" inside the body. Only names resolved
+// from the comment's mentions ids are highlighted; anything else (including an
+// @ for someone no longer on the roster) stays plain text.
+function CommentBody({ body, mentionNames }: { body: string; mentionNames: string[] }) {
+  const parts = useMemo(() => {
+    const names = mentionNames.filter(Boolean);
+    if (!names.length) return [body];
+    const escaped = names.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    return body.split(new RegExp(`(@(?:${escaped.join('|')}))`, 'g'));
+  }, [body, mentionNames]);
+  return (
+    <p className="text-sm text-slate-600 whitespace-pre-wrap">
+      {parts.map((p, i) =>
+        p.startsWith('@') && mentionNames.includes(p.slice(1))
+          ? <span key={i} className="text-blue-700 bg-blue-50 rounded px-0.5 font-medium">{p}</span>
+          : <React.Fragment key={i}>{p}</React.Fragment>
+      )}
+    </p>
+  );
+}
 
 export const INBOX_STATUS_META: Record<InboxStatus, { label: string; dot: string }> = {
   open: { label: 'Open', dot: 'bg-blue-500' },
@@ -200,9 +223,27 @@ export function MessageDrawer({ id, onClose, onChanged }: { id: string; onClose:
                 </Row>
               )}
 
-              {/* Comments land in Step 3 — labelled placeholder, not silence. */}
+              {/* Comments + @mentions — internal-only by design (no client visibility). */}
               <Row label="Comments">
-                <p className="text-sm text-slate-400">Internal comments and @mentions are coming in the next update.</p>
+                <div className="space-y-3 mb-3">
+                  {m.comments.length === 0 && <p className="text-sm text-slate-400">No comments yet.</p>}
+                  {m.comments.map((c: InboxComment) => {
+                    const names = c.mentions.map(id => members.find(mb => mb.id === id)?.name).filter(Boolean) as string[];
+                    return (
+                      <div key={c.id} className="flex gap-2">
+                        <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold shrink-0">{initials(c.authorName)}</div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-slate-800">{c.authorName}</span>
+                            <span className="text-xs text-slate-400">{new Date(c.createdAt).toLocaleString('en-GB')}</span>
+                          </div>
+                          <CommentBody body={c.body} mentionNames={names} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <MentionComposer messageId={m.id} onPosted={() => { mutate(); onChanged?.(); }} />
               </Row>
             </div>
 
@@ -223,6 +264,80 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
     <div className="space-y-1">
       <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{label}</p>
       {children}
+    </div>
+  );
+}
+
+/**
+ * Composer with a lightweight @ trigger. Typing `@word` opens a picker of active
+ * staff; selecting inserts `@Display Name ` and tracks the id. The backend
+ * treats the ID ARRAY as the source of truth — deleting the text afterwards
+ * doesn't need to un-track the id (it validates + stores ids, not names).
+ */
+function MentionComposer({ messageId, onPosted }: { messageId: string; onPosted: () => void }) {
+  const { members } = useTeamMembers();
+  const [body, setBody] = useState('');
+  const [mentionIds, setMentionIds] = useState<string[]>([]);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // An unterminated trailing "@query" (no whitespace after @) opens the picker.
+  const query = useMemo(() => {
+    const match = body.match(/@([^\s@]*)$/);
+    return match ? match[1].toLowerCase() : null;
+  }, [body]);
+  const candidates = useMemo(() => {
+    if (query === null) return [];
+    return members
+      .filter(mb => mb.status !== 'pending') // pending invitees can't be mentioned
+      .filter(mb => mb.name.toLowerCase().includes(query))
+      .slice(0, 6);
+  }, [members, query]);
+
+  const pick = (id: string, name: string) => {
+    setBody(prev => prev.replace(/@[^\s@]*$/, `@${name} `));
+    setMentionIds(prev => (prev.includes(id) ? prev : [...prev, id]));
+  };
+
+  const send = async () => {
+    if (!body.trim()) return;
+    setSending(true);
+    setError(null);
+    try {
+      await addInboxComment(messageId, { body: body.trim(), mentions: mentionIds });
+      setBody('');
+      setMentionIds([]);
+      onPosted();
+    } catch (e) {
+      setError(errMsg(e, 'Comment failed'));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const field = 'w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-100';
+
+  return (
+    <div className="relative">
+      {candidates.length > 0 && (
+        <div className="absolute bottom-full mb-1 left-0 bg-white border border-slate-200 rounded-lg shadow-lg w-64 py-1 z-10">
+          {candidates.map(c => (
+            <button key={c.id} onClick={() => pick(c.id, c.name)} className="w-full text-left px-3 py-1.5 text-sm hover:bg-slate-50 flex items-center gap-2">
+              <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[10px] font-bold">{initials(c.name)}</span>
+              {c.name}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="flex gap-2">
+        <textarea value={body} onChange={e => setBody(e.target.value)} rows={1}
+          placeholder="Add an internal comment… type @ to mention" className={`${field} resize-none flex-1`} />
+        <button onClick={send} disabled={!body.trim() || sending}
+          className="px-3 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 disabled:opacity-50 self-end">
+          {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+        </button>
+      </div>
+      {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
     </div>
   );
 }

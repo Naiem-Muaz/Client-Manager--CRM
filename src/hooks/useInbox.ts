@@ -40,8 +40,18 @@ export interface InboxEvent {
   createdAt: string;
 }
 
+export interface InboxComment {
+  id: string;
+  body: string;
+  createdAt: string;
+  authorId: string | null;
+  authorName: string;
+  mentions: string[];
+}
+
 export interface InboxMessageDetail extends InboxMessage {
   bodyText: string | null;
+  comments: InboxComment[];
   events: InboxEvent[];
   attachments: InboxAttachment[];
 }
@@ -52,14 +62,16 @@ export interface InboxCounts {
   assigned: number;
   snoozed: number;
   done: number;
+  mentions: number;
 }
 
 const fetcher = (url: string) => NextGenAPI.get(url).then(res => res.data.data ?? res.data ?? []);
 
-export function useInbox(tab: InboxTab, filters: { assigneeId?: string; clientId?: string } = {}) {
+export function useInbox(tab: InboxTab, filters: { assigneeId?: string; clientId?: string; mentionedMe?: boolean } = {}) {
   const p = new URLSearchParams({ tab });
   if (filters.assigneeId) p.set('assigneeId', filters.assigneeId);
   if (filters.clientId) p.set('clientId', filters.clientId);
+  if (filters.mentionedMe) p.set('mentioned', 'me');
   const key = `/brain/inbox?${p.toString()}`;
   const { data, error, isLoading, mutate } = useSWR<InboxMessage[]>(key, fetcher);
   return { messages: (data || []) as InboxMessage[], isLoading, isError: error, mutate };
@@ -82,5 +94,11 @@ const revalidateInbox = () =>
 export async function updateInboxMessage(id: string, patch: Record<string, any>) {
   const res = await NextGenAPI.patch(`/brain/inbox/${id}`, patch);
   revalidateInbox();
+  return res.data.data ?? res.data;
+}
+
+export async function addInboxComment(id: string, payload: { body: string; mentions?: string[] }) {
+  const res = await NextGenAPI.post(`/brain/inbox/${id}/comments`, payload);
+  revalidateInbox(); // detail key + counts (mentions count may change)
   return res.data.data ?? res.data;
 }
