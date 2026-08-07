@@ -10,6 +10,7 @@ import {
     ShieldCheck,
     Clock,
     Bell,
+    Inbox as InboxIcon,
     Save
 } from 'lucide-react';
 import { UsersTab, HMRCTab, WorkflowTab, RiskTab } from '../components/settings/SettingsTabs';
@@ -18,12 +19,16 @@ import { ServiceCatalogueTab } from '../components/settings/ServiceCatalogueTab'
 import { ProposalDefaultsTab } from '../components/settings/ProposalDefaultsTab';
 import { RemindersTab } from '../components/settings/RemindersTab';
 import { SponsorComplianceTab } from '../components/sponsor/SponsorComplianceTab';
+import { InboxSettingsTab } from '../components/settings/InboxSettingsTab';
 import { TeamTime } from '../components/hr/TeamTime';
 import { useAuth } from '../context/AuthContext';
 
 export function SetupPage() {
     const { user } = useAuth();
     const isSuperAdmin = user?.role === 'super_admin';
+    // Client-side mirror of the inbox.settings capability grant (partner/manager/
+    // admin + super_admin) — hides the tab; the backend enforces the capability.
+    const hasInboxSettings = ['super_admin', 'partner', 'manager', 'admin'].includes(user?.role || '');
     const [activeTab, setActiveTab] = useState('users');
 
     // Sponsor Compliance holds sensitive immigration data — the tab is hidden
@@ -37,6 +42,7 @@ export function SetupPage() {
         { id: 'reminders', label: 'Reminders', icon: Bell },
         { id: 'workflow', label: 'Workflow Rules', icon: Zap },
         { id: 'risk', label: 'Risk Thresholds', icon: AlertTriangle },
+        ...(hasInboxSettings ? [{ id: 'inbox', label: 'Shared Inbox', icon: InboxIcon }] : []),
         ...(isSuperAdmin ? [{ id: 'sponsor', label: 'Sponsor Compliance', icon: ShieldCheck }, { id: 'attendance', label: 'Team Attendance', icon: Clock }] : []),
     ];
 
@@ -82,6 +88,7 @@ export function SetupPage() {
                 {activeTab === 'reminders' && <RemindersTab />}
                 {activeTab === 'workflow' && <WorkflowTab />}
                 {activeTab === 'risk' && <RiskTab />}
+                {activeTab === 'inbox' && hasInboxSettings && <InboxSettingsTab />}
                 {activeTab === 'sponsor' && isSuperAdmin && <SponsorComplianceTab />}
                 {activeTab === 'attendance' && isSuperAdmin && <TeamTime />}
             </div>

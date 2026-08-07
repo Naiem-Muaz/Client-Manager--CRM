@@ -117,3 +117,26 @@ export async function convertInboxMessage(id: string, form: { jobTitle?: string;
   revalidateInbox();
   return res.data.data ?? res.data; // { job, message }
 }
+
+export interface InboxSettings {
+  address: string | null;
+  retentionDays: number | null;
+  webhookSecretConfigured: boolean;
+}
+
+export function useInboxSettings() {
+  const { data, error, isLoading, mutate } = useSWR<InboxSettings>('/brain/inbox/settings', fetcher);
+  return { settings: (data || null) as InboxSettings | null, isLoading, isError: error, mutate };
+}
+
+export async function updateInboxSettings(patch: { retentionDays: number | null }) {
+  const res = await NextGenAPI.patch('/brain/inbox/settings', patch);
+  globalMutate('/brain/inbox/settings');
+  return res.data.data ?? res.data;
+}
+
+export async function rotateInboxToken() {
+  const res = await NextGenAPI.post('/brain/inbox/settings/rotate-token', {});
+  globalMutate('/brain/inbox/settings');
+  return res.data.data ?? res.data; // { address, message }
+}
