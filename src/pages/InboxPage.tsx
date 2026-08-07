@@ -26,8 +26,13 @@ const TAB_LABELS: Record<InboxTab, string> = {
 export function InboxPage() {
   const [tab, setTab] = useState<InboxTab>('unassigned');
   const [mentionedOnly, setMentionedOnly] = useState(false);
+  // ?clientId=<id> pre-filters the list (server-side filter already exists) —
+  // read ONCE on mount, the ?message= idiom; no view-state/URL syncing.
+  const [clientFilter] = useState<string | null>(
+    () => new URLSearchParams(window.location.search).get('clientId')
+  );
   const { counts, mutate: refreshCounts } = useInboxCounts();
-  const { messages, isLoading, mutate } = useInbox(tab, { mentionedMe: mentionedOnly });
+  const { messages, isLoading, mutate } = useInbox(tab, { mentionedMe: mentionedOnly, clientId: clientFilter || undefined });
   // ?message=<id> is the email deep link — read ONCE on mount to open the drawer;
   // view state does not otherwise sync to the URL (repo convention).
   const [openId, setOpenId] = useState<string | null>(

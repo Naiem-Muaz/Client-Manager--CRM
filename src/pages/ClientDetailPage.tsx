@@ -22,7 +22,6 @@ import { ClientDetailTopBar } from '../components/clients/ClientDetailTopBar';
 import { ClientSettingsTab } from '../components/clients/ClientSettingsTab';
 import { ClientDocumentsTab } from '../components/clients/ClientDocumentsTab';
 import { ClientEngagementTab } from '../components/clients/ClientEngagementTab';
-import { ClientCommunicationsTab } from '../components/clients/ClientCommunicationsTab';
 import { ClientTaxTab } from '../components/clients/ClientTaxTab';
 import { ClientReviewTab } from '../components/clients/ClientReviewTab';
 import { ClientTransactionsTab } from '../components/clients/ClientTransactionsTab';
