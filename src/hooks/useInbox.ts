@@ -49,8 +49,11 @@ export interface InboxComment {
   mentions: string[];
 }
 
+export interface SuggestedClient { id: string; name: string }
+
 export interface InboxMessageDetail extends InboxMessage {
   bodyText: string | null;
+  suggestedClients?: SuggestedClient[];
   comments: InboxComment[];
   events: InboxEvent[];
   attachments: InboxAttachment[];
@@ -101,4 +104,16 @@ export async function addInboxComment(id: string, payload: { body: string; menti
   const res = await NextGenAPI.post(`/brain/inbox/${id}/comments`, payload);
   revalidateInbox(); // detail key + counts (mentions count may change)
   return res.data.data ?? res.data;
+}
+
+export async function linkInboxClient(id: string, clientId: string | null) {
+  const res = await NextGenAPI.patch(`/brain/inbox/${id}/client`, { clientId });
+  revalidateInbox();
+  return res.data.data ?? res.data;
+}
+
+export async function convertInboxMessage(id: string, form: { jobTitle?: string; jobType?: string; templateId?: string; assigneeId?: string }) {
+  const res = await NextGenAPI.post(`/brain/inbox/${id}/convert`, form);
+  revalidateInbox();
+  return res.data.data ?? res.data; // { job, message }
 }

@@ -1,8 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { X, ExternalLink, Check, Loader2, Paperclip, Mail, AlarmClock, CheckCircle2, RotateCcw, Send } from 'lucide-react';
-import { useInboxMessage, updateInboxMessage, addInboxComment, InboxStatus, InboxComment } from '../../hooks/useInbox';
+import { X, ExternalLink, Check, Loader2, Paperclip, Mail, AlarmClock, CheckCircle2, RotateCcw, Send, Briefcase, Link2, Unlink } from 'lucide-react';
+import { useInboxMessage, updateInboxMessage, addInboxComment, linkInboxClient, convertInboxMessage, InboxStatus, InboxComment, InboxMessageDetail } from '../../hooks/useInbox';
 import { useTeamMembers } from '../../hooks/useTeam';
+import { useClients } from '../../hooks/useClients';
+import { useJobTemplates } from '../../hooks/useJobs';
 import { errMsg } from '../../lib/errMsg';
 
 const initials = (name?: string | null) => (name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
@@ -187,11 +189,17 @@ export function MessageDrawer({ id, onClose, onChanged }: { id: string; onClose:
                 </a>
               </div>
 
-              {/* Linked client (read-only this step; linking ships with Step 4) */}
+              {/* Linked client — link / unlink / suggestions */}
               <Row label="Client">
-                {m.clientId
-                  ? <Link to={`/clients/${m.clientId}`} onClick={close} className="text-blue-600 hover:text-blue-800 font-medium inline-flex items-center gap-1">{m.clientName || 'View'} <ExternalLink size={12} /></Link>
-                  : <span className="text-slate-400 text-sm">Not linked to a client yet.</span>}
+                <ClientSection m={m} onApply={async (clientId) => {
+                  try { await linkInboxClient(m.id, clientId); mutate(); onChanged?.(); }
+                  catch (e) { setSaveError(errMsg(e, 'Link failed')); }
+                }} onNavigate={close} />
+              </Row>
+
+              {/* Convert to job */}
+              <Row label="Job">
+                <ConvertSection m={m} onConverted={() => { mutate(); onChanged?.(); }} />
               </Row>
 
               {/* Body — text only, by design (HTML is stored but never rendered in v1) */}
@@ -264,6 +272,147 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
     <div className="space-y-1">
       <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{label}</p>
       {children}
+    </div>
+  );
+}
+
+/** Link / unlink / one-click suggestions + a search picker over the existing
+ *  useClients() list (no new endpoint — client-side name filter). */
+function ClientSection({ m, onApply, onNavigate }: {
+  m: InboxMessageDetail;
+  onApply: (clientId: string | null) => Promise<void>;
+  onNavigate: () => void;
+}) {
+  const { clients } = useClients();
+  const [query, setQuery] = useState('');
+  const [busy, setBusy] = useState(false);
+  const apply = async (id: string | null) => { setBusy(true); try { await onApply(id); setQuery(''); } finally { setBusy(false); } };
+
+  if (m.clientId) {
+    return (
+      <div className="flex items-center gap-2 flex-wrap">
+        <Link to={`/clients/${m.clientId}`} onClick={onNavigate} className="text-blue-600 hover:text-blue-800 font-medium inline-flex items-center gap-1">
+          {m.clientName || 'View'} <ExternalLink size={12} />
+        </Link>
+        <button onClick={() => apply(null)} disabled={busy}
+          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:opacity-50">
+          <Unlink size={11} /> Unlink
+        </button>
+      </div>
+    );
+  }
+
+  const matches = query.trim().length >= 2
+    ? (clients || []).filter((c: any) => (c.name || '').toLowerCase().includes(query.trim().toLowerCase())).slice(0, 6)
+    : [];
+
+  return (
+    <div className="space-y-2">
+      {(m.suggestedClients?.length ?? 0) > 0 && (
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-xs text-slate-400">Suggested:</span>
+          {m.suggestedClients!.map(s => (
+            <button key={s.id} onClick={() => apply(s.id)} disabled={busy}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 disabled:opacity-50">
+              <Link2 size={11} /> {s.name}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="relative">
+        <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search clients to link…"
+          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-100" />
+        {matches.length > 0 && (
+          <div className="absolute top-full mt-1 left-0 right-0 bg-white border border-slate-200 rounded-lg shadow-lg py-1 z-10">
+            {matches.map((c: any) => (
+              <button key={c.id} onClick={() => apply(c.id)} disabled={busy}
+                className="w-full text-left px-3 py-1.5 text-sm hover:bg-slate-50">{c.name}</button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Convert-to-job: inline form (title prefilled from subject, optional template +
+ *  assignee). 409 surfaces the existing job, never an error wall. */
+function ConvertSection({ m, onConverted }: { m: InboxMessageDetail; onConverted: () => void }) {
+  const { members } = useTeamMembers();
+  const { templates } = useJobTemplates();
+  const [open, setOpen] = useState(false);
+  const [title, setTitle] = useState('');
+  const [templateId, setTemplateId] = useState('');
+  const [assigneeId, setAssigneeId] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (m.convertedJobId) {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-700">
+          <Briefcase size={11} /> Converted
+        </span>
+        <Link to="/work" className="text-blue-600 hover:text-blue-800 text-sm font-medium inline-flex items-center gap-1">
+          View on the work board <ExternalLink size={12} />
+        </Link>
+      </div>
+    );
+  }
+
+  const convert = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await convertInboxMessage(m.id, {
+        jobTitle: title.trim() || undefined,
+        templateId: templateId || undefined,
+        assigneeId: assigneeId || undefined,
+        // Without a template the API needs a jobType — a plain triage job.
+        ...(templateId ? {} : { jobType: 'ad-hoc' }),
+      });
+      setOpen(false);
+      onConverted();
+    } catch (e: any) {
+      if (e?.response?.status === 409) { onConverted(); return; } // someone beat us to it — show their job
+      setError(errMsg(e?.response?.data ?? e, 'Convert failed'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const field = 'w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-100';
+
+  if (!open) {
+    return (
+      <button onClick={() => { setTitle(m.subject || ''); setOpen(true); }}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-200">
+        <Briefcase size={14} /> Convert to job
+      </button>
+    );
+  }
+
+  return (
+    <div className="space-y-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
+      <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Job title" className={field} />
+      <div className="grid grid-cols-2 gap-2">
+        <select value={templateId} onChange={e => setTemplateId(e.target.value)} className={field}>
+          <option value="">No template</option>
+          {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+        </select>
+        <select value={assigneeId} onChange={e => setAssigneeId(e.target.value)} className={field}>
+          <option value="">Unassigned</option>
+          {members.filter(mb => mb.status !== 'pending').map(mb => <option key={mb.id} value={mb.id}>{mb.name}</option>)}
+        </select>
+      </div>
+      <div className="flex items-center gap-2">
+        <button onClick={convert} disabled={busy || (!title.trim() && !templateId)}
+          className="px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50">
+          {busy ? <Loader2 size={14} className="animate-spin" /> : 'Create job'}
+        </button>
+        <button onClick={() => setOpen(false)} className="px-3 py-1.5 text-sm text-slate-500 hover:text-slate-700">Cancel</button>
+      </div>
+      {error && <p className="text-xs text-red-500">{error}</p>}
     </div>
   );
 }
