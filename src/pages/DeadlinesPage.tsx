@@ -27,6 +27,10 @@ type Tile = 'all' | 'overdue' | 'week' | 'fortnight' | 'unassigned';
 type GroupBy = 'week' | 'assignee' | 'clienttype';
 
 const NARROW = "font-['Archivo_Narrow']";
+// ONE class for every toolbar filter — the two native selects AND the custom
+// client-type trigger — so the row reads as a single set of controls rather than
+// a bespoke one bolted next to two natives (identical height, border, type).
+const FILTER_CTL = 'h-[30px] border bg-white px-2 text-[12px] font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#ec3013] focus-visible:outline-offset-2';
 const BAND = 'min-w-[1218px]';
 const GRID = 'grid-cols-[40px_minmax(210px,1.7fr)_minmax(200px,1.5fr)_118px_128px_150px_156px_76px]';
 
@@ -43,6 +47,19 @@ const STATUS_DOT: Record<DeadlineStatus, string> = {
 const AUTH_SHORT: Record<Authority, string> = {
   companies_house: 'CH', hmrc: 'HMRC', pension_regulator: 'TPR', internal: 'INT',
 };
+
+// A stroked V, matching the chevron the native <select>s draw beside these
+// controls — a filled ▾ glyph read heavier and made the custom controls the odd
+// ones out. Not a lucide icon: the page's no-icon rule is about the authority
+// tags and status dot, and a select needs its affordance.
+function Chevron({ className = '' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 12 12" aria-hidden="true" focusable="false"
+      className={`w-[11px] h-[11px] shrink-0 ${className}`}>
+      <path d="M2.5 4.5L6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
 
 function nextStatus(s: DeadlineStatus): DeadlineStatus {
   const i = STATUS_FLOW.indexOf(s);
@@ -320,13 +337,13 @@ export function DeadlinesPage() {
 
           <div className="ml-auto flex items-center gap-2">
             <ClientTypeFilter value={clientTypes} onChange={setClientTypes} />
-            <select value={authority} onChange={(e) => setAuthority(e.target.value)} className="border border-[#bab6b6] bg-white px-2 py-1.5 text-[12px] font-medium">
+            <select value={authority} onChange={(e) => setAuthority(e.target.value)} className={`${FILTER_CTL} ${authority ? 'border-[#201e1d] text-[#201e1d]' : 'border-[#bab6b6] text-[#444141]'}`}>
               <option value="">All authorities</option>
               <option value="companies_house">Companies House</option>
               <option value="hmrc">HMRC</option>
               <option value="pension_regulator">Pension Regulator</option>
             </select>
-            <select value={assignee} onChange={(e) => setAssignee(e.target.value)} className="border border-[#bab6b6] bg-white px-2 py-1.5 text-[12px] font-medium">
+            <select value={assignee} onChange={(e) => setAssignee(e.target.value)} className={`${FILTER_CTL} ${assignee ? 'border-[#201e1d] text-[#201e1d]' : 'border-[#bab6b6] text-[#444141]'}`}>
               <option value="">All assignees</option>
               {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
@@ -343,8 +360,8 @@ export function DeadlinesPage() {
               <button onClick={() => setAssignOpen((o) => !o)} disabled={busy} className="border border-[#7d7979] bg-transparent text-[#f3f2f2] px-3 py-[5px] text-[12px] font-semibold hover:bg-[#ec3013] hover:border-[#ec3013] disabled:opacity-40">Assign to…</button>
               {assignOpen && (
                 <>
-                  <div className="fixed inset-0 z-10" onClick={() => setAssignOpen(false)} />
-                  <div className="absolute left-0 mt-1 w-56 max-h-64 overflow-y-auto bg-white border border-[#201e1d] z-20 text-[#201e1d]">
+                  <div className="fixed inset-0 z-40" onClick={() => setAssignOpen(false)} />
+                  <div className="absolute left-0 mt-1 w-56 max-h-64 overflow-y-auto bg-white border border-[#201e1d] z-50 text-[#201e1d]">
                     {members.map((m) => (
                       <button key={m.id} onClick={() => bulkAssign(m.id, m.name)} className="w-full text-left px-3 py-1.5 text-[13px] hover:bg-[#eae9e9]">{m.name}</button>
                     ))}
@@ -452,26 +469,35 @@ function DeadlineRow({ d, status, pending, checked, onCheck, onSetStatus }: {
 
       <div><span className={`inline-block px-[9px] py-[3px] text-[12px] font-bold whitespace-nowrap ${p.className}`}>{p.text}</span></div>
 
-      {/* Status — click to open the full list; PATCHes and updates optimistically. */}
+      {/* Status — a deliberate select-style control: fixed width so the chevrons
+          line up down the column, a rule separating the chevron the way a native
+          select does, and a border solid enough to read as interactive at rest.
+          Secondary by design: neutral chrome, the dot carries the only colour. */}
       <div className="relative">
         <button
           onClick={() => setOpen((o) => !o)} disabled={pending} title="Click to change status"
-          className={`inline-flex items-center gap-[7px] border border-[#d7d3d3] bg-white pl-[7px] pr-[9px] py-1 text-[12px] font-semibold text-[#201e1d] whitespace-nowrap hover:border-[#201e1d] ${pending ? 'opacity-50' : ''}`}
+          className={`inline-flex items-center w-[142px] h-[26px] pl-2 pr-0 border bg-white text-[12px] font-semibold text-[#201e1d] whitespace-nowrap
+            ${open ? 'border-[#201e1d] bg-[#eae9e9]' : 'border-[#bab6b6]'} hover:border-[#201e1d] hover:bg-[#eae9e9]
+            focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#ec3013] focus-visible:outline-offset-2
+            ${pending ? 'opacity-50' : ''}`}
         >
-          <span className={`w-2 h-2 shrink-0 ${STATUS_DOT[status]}`} />{STATUS_LABELS[status]}
-          <span className={`${NARROW} text-[9px] text-[#605d5d]`}>▾</span>
+          <span className={`w-2 h-2 shrink-0 ${STATUS_DOT[status]}`} />
+          <span className="flex-1 text-left truncate pl-2">{STATUS_LABELS[status]}</span>
+          <span className="flex items-center justify-center w-[22px] h-full shrink-0 border-l border-[#d7d3d3] text-[#605d5d]"><Chevron /></span>
         </button>
         {open && (
           <>
-            <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-            <div className="absolute left-0 mt-1 w-48 bg-white border border-[#201e1d] z-20">
+            <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+            <div className="absolute left-0 mt-1 w-[190px] bg-white border border-[#201e1d] z-50 py-1">
               {STATUS_ORDER.map((s) => (
                 <button
                   key={s}
                   onClick={() => { setOpen(false); onSetStatus(s); }}
-                  className={`w-full text-left px-2.5 py-1.5 text-[12px] font-medium inline-flex items-center gap-2 hover:bg-[#eae9e9] ${s === status ? 'bg-[#f3f2f2] font-bold' : ''}`}
+                  className={`w-full text-left px-3 py-[7px] text-[12.5px] inline-flex items-center gap-2.5 hover:bg-[#eae9e9] ${s === status ? 'bg-[#f3f2f2] font-bold' : 'font-medium'}`}
                 >
-                  <span className={`w-2 h-2 shrink-0 ${STATUS_DOT[s]}`} />{STATUS_LABELS[s]}
+                  <span className={`w-2 h-2 shrink-0 ${STATUS_DOT[s]}`} />
+                  <span className="flex-1">{STATUS_LABELS[s]}</span>
+                  {s === status && <span className="text-[11px] text-[#7c1405]">✓</span>}
                 </button>
               ))}
             </div>
@@ -496,23 +522,33 @@ function ClientTypeFilter({ value, onChange }: { value: ClientType[]; onChange: 
   const label = value.length === 0 ? 'All client types' : value.length === 1 ? CLIENT_TYPE_META[value[0]].label : `${value.length} client types`;
   return (
     <div className="relative">
+      {/* Same FILTER_CTL as the two native selects beside it; the chevron is sized
+          and coloured to sit at the same visual weight as their native ones. */}
       <button
-        type="button" onClick={() => setOpen((o) => !o)}
-        className={`border bg-white px-2 py-1.5 text-[12px] font-medium inline-flex items-center gap-1.5 ${value.length ? 'border-[#201e1d] text-[#201e1d]' : 'border-[#bab6b6] text-[#444141]'}`}
-      >{label} <span className="text-[9px] text-[#605d5d]">▾</span></button>
+        type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open}
+        className={`${FILTER_CTL} inline-flex items-center gap-2 ${value.length || open ? 'border-[#201e1d] text-[#201e1d]' : 'border-[#bab6b6] text-[#444141]'}`}
+      >
+        {label}
+        <Chevron className="text-[#605d5d]" />
+      </button>
       {open && (
         <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 mt-1 w-52 bg-white border border-[#201e1d] z-20 py-1">
-            {CLIENT_TYPE_ORDER.map((t) => (
-              <label key={t} className="flex items-center gap-2.5 px-3 py-1.5 text-[13px] text-[#201e1d] hover:bg-[#eae9e9] cursor-pointer">
-                <input type="checkbox" checked={value.includes(t)} onChange={() => toggle(t)} className="w-3.5 h-3.5 accent-[#ec3013]" />
-                {CLIENT_TYPE_META[t].label}
-              </label>
-            ))}
-            {value.length > 0 && (
-              <button onClick={() => onChange([])} className="w-full text-left px-3 py-1.5 text-[12px] font-semibold text-[#ae1800] hover:bg-[#eae9e9] border-t border-[#d7d3d3] mt-1">Clear client types</button>
-            )}
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 mt-1 w-[224px] bg-white border border-[#201e1d] z-50">
+            <div className={`${NARROW} text-[10px] font-bold uppercase tracking-[0.12em] text-[#605d5d] px-3 pt-2.5 pb-1.5`}>Client type</div>
+            {CLIENT_TYPE_ORDER.map((t) => {
+              const on = value.includes(t);
+              return (
+                <label key={t} className={`flex items-center gap-2.5 px-3 py-2 text-[13px] cursor-pointer hover:bg-[#eae9e9] ${on ? 'bg-[#f3f2f2] font-semibold text-[#201e1d]' : 'text-[#444141]'}`}>
+                  <input type="checkbox" checked={on} onChange={() => toggle(t)} className="w-4 h-4 accent-[#ec3013]" />
+                  {CLIENT_TYPE_META[t].label}
+                </label>
+              );
+            })}
+            <button
+              onClick={() => onChange([])} disabled={value.length === 0}
+              className="w-full text-left px-3 py-2 text-[12px] font-semibold text-[#ae1800] hover:bg-[#eae9e9] border-t border-[#d7d3d3] disabled:text-[#bab6b6] disabled:hover:bg-transparent"
+            >Clear client types</button>
           </div>
         </>
       )}
