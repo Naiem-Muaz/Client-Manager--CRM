@@ -1,233 +1,442 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  AlertTriangle, CalendarClock, ChevronDown, ChevronRight, List as ListIcon,
-  CalendarDays, Loader2, ArrowRight, Building2, Landmark,
-} from 'lucide-react';
-import { usePracticeDeadlines, useCoverageRollup, PracticeFilters, CoverageRollup } from '../hooks/useDeadlineEngine';
+  usePracticeDeadlines, useCoverageRollup, patchDeadline,
+  PracticeFilters, CoverageRollup,
+} from '../hooks/useDeadlineEngine';
 import { useTeamMembers } from '../hooks/useTeam';
 import { clientTypeOf, ClientType, CLIENT_TYPE_META, CLIENT_TYPE_ORDER } from '../lib/entityType';
 import {
-  Deadline, formatDateOnly, daysPill, STATUS_LABELS, STATUS_ORDER, DeadlineStatus, DONE_STATUSES,
-  AUTHORITY_LABELS, AUTHORITY_ORDER, Authority, weekStartISO, reasonMeta,
+  Deadline, formatDateOnly, formatPeriod, STATUS_LABELS, DeadlineStatus,
+  DONE_STATUSES, AUTHORITY_LABELS, Authority, weekStartISO, reasonMeta,
 } from '../lib/deadlines';
 
-type GroupBy = 'week' | 'assignee' | 'client' | 'clienttype';
-type ViewMode = 'list' | 'calendar';
-type DatasetView = 'active' | 'done';
+// ─────────────────────────────────────────────────────────────────────────────
+// Deadlines — triage-first redesign (Modernist design system).
+// Renders inside AppLayout (which owns the app sidebar + top bar), so the mock's
+// left nav is intentionally dropped; this is the "main column" as a framed panel.
+// Palette/type/spacing are matched to design_handoff_deadlines_page. All values are
+// Tailwind arbitrary utilities so no new styling approach is introduced.
+//
+// DATA NOTES (design ↔ Deadline model reconciliation):
+//  • No `fee` on the Deadline model → the Fee column renders "—" and group fee
+//    totals are omitted (no honest source).
+//  • No CRN field → client meta shows client-type (+ external_ref when present);
+//    search covers client name, obligation name and external_ref.
+//  • overdue is driven by the SQL-derived `overdue` boolean (never days_remaining).
+// ─────────────────────────────────────────────────────────────────────────────
 
-// The status chips are context-sensitive to the Active/Done toggle: Active shows
-// the not-done statuses, Done shows the done ones — so a chip can never select a
-// status that's absent from the current view (no contradictory / empty result).
-const NOT_DONE_STATUSES: DeadlineStatus[] = STATUS_ORDER.filter((s) => !DONE_STATUSES.includes(s));
+type Tile = 'all' | 'overdue' | 'week' | 'fortnight' | 'unassigned';
+type GroupBy = 'week' | 'assignee' | 'clienttype';
+
+const NARROW = "font-['Archivo_Narrow']";
+const BAND = 'min-w-[1218px]';
+const GRID = 'grid-cols-[40px_minmax(210px,1.7fr)_minmax(200px,1.5fr)_118px_128px_150px_156px_84px_76px]';
+
+// Advance flow for the single-row status button + bulk "Advance status".
+const STATUS_FLOW: DeadlineStatus[] = ['not_started', 'in_progress', 'awaiting_client', 'ready_to_file', 'submitted'];
+const CHIP_STATUSES: DeadlineStatus[] = ['not_started', 'in_progress', 'awaiting_client', 'ready_to_file'];
+const STATUS_DOT: Record<DeadlineStatus, string> = {
+  not_started: 'bg-[#bab6b6]', in_progress: 'bg-[#ec3013]', awaiting_client: 'bg-[#c98a1a]',
+  ready_to_file: 'bg-[#3f7048]', submitted: 'bg-[#605d5d]', filed: 'bg-[#605d5d]',
+  confirmed: 'bg-[#605d5d]', not_applicable: 'bg-[#605d5d]',
+};
+const AUTH_SHORT: Record<Authority, string> = {
+  companies_house: 'CH', hmrc: 'HMRC', pension_regulator: 'TPR', internal: 'INT',
+};
+
+function nextStatus(s: DeadlineStatus): DeadlineStatus {
+  const i = STATUS_FLOW.indexOf(s);
+  return i === -1 ? s : STATUS_FLOW[Math.min(i + 1, STATUS_FLOW.length - 1)];
+}
+
+// Days pill — 5 tiers, overdue boolean is the source of truth (design palette).
+function pill(d: Deadline): { text: string; cls: string } {
+  if (d.overdue) {
+    const n = Math.abs(d.days_remaining);
+    return { text: `${n} ${n === 1 ? 'day' : 'days'} overdue`, cls: 'bg-[#ec3013] text-white border border-[#ec3013]' };
+  }
+  if (d.days_remaining === 0) return { text: 'Due today', cls: 'bg-[#ffe0d9] text-[#7c1405] border border-[#ffc4b8]' };
+  if (d.days_remaining <= 7) return { text: `${d.days_remaining} ${d.days_remaining === 1 ? 'day' : 'days'}`, cls: 'bg-[#f7e7c9] text-[#6b4410] border border-[#e6cfa4]' };
+  if (d.days_remaining <= 14) return { text: `${d.days_remaining} days`, cls: 'bg-[#eae7e7] text-[#444141] border border-[#d7d3d3]' };
+  return { text: `${d.days_remaining} days`, cls: 'bg-[#e3ece4] text-[#2f5237] border border-[#cddece]' };
+}
+
+interface Group { key: string; label: string; rows: Deadline[]; overdue: number; }
+
+function buildGroups(list: Deadline[], by: GroupBy): Group[] {
+  const map = new Map<string, Group>();
+  const push = (key: string, label: string, d: Deadline) => {
+    let g = map.get(key);
+    if (!g) { g = { key, label, rows: [], overdue: 0 }; map.set(key, g); }
+    g.rows.push(d);
+    if (d.overdue) g.overdue++;
+  };
+  for (const d of list) {
+    if (by === 'week') { const wk = weekStartISO(d.statutory_due_date); push(wk, `Week of ${formatDateOnly(wk)}`, d); }
+    else if (by === 'assignee') { push(d.assignee_name ?? '~unassigned', d.assignee_name ?? 'Unassigned', d); }
+    else { const ct = clientTypeOf({ entity_type: d.client_entity_type, mtd_status: d.client_mtd_status }); push(ct, CLIENT_TYPE_META[ct].label, d); }
+  }
+  const arr = [...map.values()];
+  // Within a group: statutory due date ascending, client name as tiebreak.
+  arr.forEach((g) => g.rows.sort((a, b) => a.statutory_due_date.localeCompare(b.statutory_due_date) || (a.client_name ?? '').localeCompare(b.client_name ?? '')));
+  if (by === 'week') {
+    // Earlier-than-this-week groups sort to the TOP (ascending — overdue first),
+    // then the current week and later (ascending).
+    const cw = weekStartISO(new Date().toISOString().slice(0, 10));
+    const past = arr.filter((g) => g.key < cw).sort((a, b) => a.key.localeCompare(b.key));
+    const rest = arr.filter((g) => g.key >= cw).sort((a, b) => a.key.localeCompare(b.key));
+    return [...past, ...rest];
+  }
+  if (by === 'assignee') {
+    const sortKey = (g: Group) => (g.key === '~unassigned' ? '0' : '1' + g.label);
+    return arr.sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
+  }
+  return arr.sort((a, b) => CLIENT_TYPE_ORDER.indexOf(a.key as ClientType) - CLIENT_TYPE_ORDER.indexOf(b.key as ClientType));
+}
 
 export function DeadlinesPage() {
-  const [authority, setAuthority] = useState<string>('');
+  const [tile, setTile] = useState<Tile>('all');
+  const [groupBy, setGroupBy] = useState<GroupBy>('week');
   const [statuses, setStatuses] = useState<DeadlineStatus[]>([]);
-  const [assignee, setAssignee] = useState<string>('');
-  const [clientTypes, setClientTypes] = useState<ClientType[]>([]);
-  const [overdueOnly, setOverdueOnly] = useState(false);
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
-  const [groupBy, setGroupBy] = useState<GroupBy>('week');   // default Week (capacity view)
-  const [view, setView] = useState<ViewMode>('list');        // default List (denser)
+  const [authority, setAuthority] = useState<string>('');   // server-side
+  const [assignee, setAssignee] = useState<string>('');     // server-side (team member id)
+  const [query, setQuery] = useState('');                   // client-side
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [showCoverage, setShowCoverage] = useState(false);
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const notify = (m: string) => { setToast(m); setTimeout(() => setToast(null), 3000); };
 
-  // NOTE: status is filtered CLIENT-SIDE (not sent to the server) so the fetched
-  // set is the full partition — the Active/Done counts stay accurate and the chips
-  // narrow within the already-partitioned view, never fighting the split.
-  const filters: PracticeFilters = {
-    authority: authority || undefined,
-    assignee: assignee || undefined,
-    overdue: overdueOnly,
-    from: from || undefined,
-    to: to || undefined,
-    pageSize: 500,
-  };
-  const { rows, total, isLoading, isError } = usePracticeDeadlines(filters);
+  const filters: PracticeFilters = { authority: authority || undefined, assignee: assignee || undefined, pageSize: 500 };
+  const { rows, total, isLoading, isError, mutate } = usePracticeDeadlines(filters);
   const { rollup } = useCoverageRollup();
   const { members } = useTeamMembers();
 
-  // Client-side split (independent of the status chips): done items are kept out
-  // of the active work list — the Active/Done toggle below decides which set the
-  // list/calendar shows, so a completed current-period deadline stops cluttering
-  // 'Active' while next period's instance stays in 'upcoming'.
-  const { active, done } = useMemo(() => partitionDone(rows), [rows]);
-  const [dataset, setDataset] = useState<DatasetView>('active');   // Active vs Done rows
+  // Triage view works the active (non-done) partition; advancing to a done status
+  // drops the row out on the next revalidation.
+  const active = useMemo(() => rows.filter((d) => !DONE_STATUSES.includes(d.status)), [rows]);
 
-  // Chips filter client-side WITHIN the current view's partition. The chip set is
-  // scoped to the view (not-done vs done), so `statuses` can only ever hold codes
-  // valid for the current partition.
-  // Client-type filter (multi-select). Uses the SAME clientTypeOf classifier the
-  // "Client type" grouping uses — one definition of each category.
-  const ctMatch = useMemo(
-    () => (d: Deadline) => clientTypes.length === 0 || clientTypes.includes(clientTypeOf({ entity_type: d.client_entity_type, mtd_status: d.client_mtd_status })),
-    [clientTypes],
-  );
-  const shownActive = useMemo(
-    () => active.filter((d) => (!statuses.length || statuses.includes(d.status)) && ctMatch(d)),
-    [active, statuses, ctMatch],
-  );
-  const shownDone = useMemo(
-    () => done.filter((d) => (!statuses.length || statuses.includes(d.status)) && ctMatch(d)),
-    [done, statuses, ctMatch],
-  );
-  const groups = useMemo(() => buildActiveGroups(shownActive, groupBy), [shownActive, groupBy]);
+  // Tile counts are computed over the FULL active partition (ignoring the status
+  // chips, the search box and the selected tile) so they stay accurate while you
+  // narrow the list — matching the design's reasoning.
+  const counts = useMemo(() => {
+    let overdue = 0, week = 0, fortnight = 0, unassigned = 0;
+    for (const d of active) {
+      if (d.overdue) overdue++;
+      if (d.days_remaining >= 0 && d.days_remaining <= 6) week++;
+      if (d.days_remaining >= 0 && d.days_remaining <= 14) fortnight++;
+      if (d.assigned_to === null) unassigned++;
+    }
+    return { overdue, week, fortnight, unassigned, all: active.length };
+  }, [active]);
 
-  // Switching Active<->Done RESETS the chip selection so a code chosen in one view
-  // can't linger and filter the other to empty (the two chip sets are disjoint).
-  const switchDataset = (d: DatasetView) => { setDataset(d); setStatuses([]); };
+  const shown = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return active.filter((d) => {
+      if (statuses.length && !statuses.includes(d.status)) return false;
+      if (q) {
+        const hay = `${d.client_name ?? ''} ${d.deadline_type.name} ${d.external_ref ?? ''}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      if (tile === 'overdue' && !d.overdue) return false;
+      if (tile === 'week' && !(d.days_remaining >= 0 && d.days_remaining <= 6)) return false;
+      if (tile === 'fortnight' && !(d.days_remaining >= 0 && d.days_remaining <= 14)) return false;
+      if (tile === 'unassigned' && d.assigned_to !== null) return false;
+      return true;
+    });
+  }, [active, statuses, query, tile]);
 
-  const clearFilters = () => { setAuthority(''); setStatuses([]); setAssignee(''); setClientTypes([]); setOverdueOnly(false); setFrom(''); setTo(''); };
-  const hasFilters = authority || statuses.length || assignee || clientTypes.length || overdueOnly || from || to;
+  const groups = useMemo(() => buildGroups(shown, groupBy), [shown, groupBy]);
+
+  const shownIds = shown.map((d) => d.id);
+  const selectedCount = shownIds.filter((id) => selected.has(id)).length;
+  const allChecked = shown.length > 0 && shownIds.every((id) => selected.has(id));
+
+  const toggleRow = (id: string) => setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const toggleAll = () => setSelected((prev) => {
+    const n = new Set(prev);
+    const allSel = shownIds.every((id) => n.has(id));
+    shownIds.forEach((id) => (allSel ? n.delete(id) : n.add(id)));
+    return n;
+  });
+  const clearSelection = () => setSelected(new Set());
+
+  const advance = async (d: Deadline) => {
+    const next = nextStatus(d.status);
+    if (next === d.status) return;
+    try { await patchDeadline(d.id, { status: next }); await mutate(); }
+    catch { notify('Could not update status.'); }
+  };
+
+  const targets = () => shown.filter((d) => selected.has(d.id));
+  const bulkAdvance = async () => {
+    setBusy(true);
+    try { await Promise.all(targets().map((d) => patchDeadline(d.id, { status: nextStatus(d.status) }))); await mutate(); clearSelection(); }
+    catch { notify('Some updates failed.'); } finally { setBusy(false); }
+  };
+  const bulkStatus = async (status: DeadlineStatus, msg: string) => {
+    setBusy(true);
+    try { await Promise.all(targets().map((d) => patchDeadline(d.id, { status }))); await mutate(); clearSelection(); notify(msg); }
+    catch { notify('Some updates failed.'); } finally { setBusy(false); }
+  };
+  const bulkAssign = async (memberId: string, name: string) => {
+    setAssignOpen(false); setBusy(true);
+    try { await Promise.all(targets().map((d) => patchDeadline(d.id, { assigned_to: memberId }))); await mutate(); clearSelection(); notify(`Assigned to ${name}.`); }
+    catch { notify('Some updates failed.'); } finally { setBusy(false); }
+  };
+
+  const clearFilters = () => { setAuthority(''); setAssignee(''); setStatuses([]); setQuery(''); setTile('all'); };
+
+  const exportCsv = () => {
+    const cell = (v: string | number) => { const s = String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    const head = ['Client', 'Obligation', 'Authority', 'Due', 'Status', 'Assignee', 'Remaining'];
+    const body = shown.map((d) => [
+      d.client_name ?? '', d.deadline_type.name, AUTHORITY_LABELS[d.deadline_type.authority],
+      d.statutory_due_date, STATUS_LABELS[d.status], d.assignee_name ?? '',
+      d.overdue ? `${Math.abs(d.days_remaining)} overdue` : `${d.days_remaining}`,
+    ].map(cell).join(','));
+    const blob = new Blob([[head.join(','), ...body].join('\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'deadlines.csv'; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Coverage strip figures.
+  const cov = rollup?.counts;
+  const clientTotal = cov ? cov.ok + cov.unmonitored + cov.under_monitored : 0;
+  const attention = cov ? cov.unmonitored + cov.under_monitored : 0;
+  const clientsTracked = useMemo(() => new Set(rows.map((d) => d.client_id)).size, [rows]);
+  const lastSync = useMemo(() => rows.reduce<string | null>((mx, d) => (d.last_synced_at && (!mx || d.last_synced_at > mx) ? d.last_synced_at : mx), null), [rows]);
+
+  const tileDefs: { id: Tile; count: number; unit: string; label: string; num: string; rule: string }[] = [
+    { id: 'overdue', count: counts.overdue, unit: 'items', label: 'Overdue — statutory date passed', num: 'text-[#ec3013]', rule: 'bg-[#ec3013]' },
+    { id: 'week', count: counts.week, unit: 'items', label: 'Due this week', num: 'text-[#201e1d]', rule: 'bg-[#c98a1a]' },
+    { id: 'fortnight', count: counts.fortnight, unit: 'items', label: 'Due within 14 days', num: 'text-[#201e1d]', rule: 'bg-[#3f7048]' },
+    { id: 'unassigned', count: counts.unassigned, unit: 'items', label: 'Unassigned work', num: 'text-[#201e1d]', rule: 'bg-[#7d7979]' },
+    { id: 'all', count: counts.all, unit: 'total', label: 'All active deadlines', num: 'text-[#201e1d]', rule: 'bg-[#d7d3d3]' },
+  ];
+
+  const kicker = `${NARROW} text-[11px] font-bold uppercase tracking-[0.12em]`;
 
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-8">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-          <CalendarClock className="text-blue-600" /> Deadlines
-        </h1>
-        <span className="text-sm text-slate-500">{total} deadline{total === 1 ? '' : 's'}</span>
-      </div>
+    <div className={`font-['Archivo'] text-[#201e1d] antialiased`}>
+      <div className="overflow-x-auto border-2 border-[#201e1d] bg-[#f3f2f2]">
 
-      {/* Region 1 — Needs attention (always present) */}
-      <NeedsAttention rollup={rollup} />
+        {/* App bar */}
+        <div className={`${BAND} flex items-center gap-4 py-[14px] px-7 border-b-2 border-[#201e1d]`}>
+          <div className={`${NARROW} text-[11px] uppercase tracking-[0.12em] text-[#605d5d]`}>Clients / Practice</div>
+          <input
+            type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search client, obligation, ref"
+            className="ml-auto w-[300px] border border-[#bab6b6] bg-white px-2.5 py-[7px] text-[13px] text-[#201e1d] focus:outline-none focus:ring-2 focus:ring-[#ffc4b8]"
+          />
+          <button onClick={exportCsv} className="border border-[#bab6b6] bg-white px-3 py-[7px] text-[12px] font-semibold hover:border-[#201e1d]">Export CSV</button>
+          <button title="New deadline — coming soon" onClick={() => notify('New-deadline creation is not wired up yet.')} className="border border-[#ec3013] bg-[#ec3013] text-white px-3.5 py-[7px] text-[12px] font-bold hover:bg-[#dd2b0f] hover:border-[#dd2b0f]">New deadline</button>
+        </div>
 
-      {/* Region 2 — the work */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
-        <div className="p-4 border-b border-slate-200 space-y-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <Toggle label="Group" value={groupBy} onChange={(v) => setGroupBy(v as GroupBy)} options={[['week', 'Week'], ['assignee', 'Assignee'], ['client', 'Client'], ['clienttype', 'Client type']]} />
-            {/* Active / Done dataset toggle — LIST-view only (calendar shows everything).
-                Counts show each set's full size without switching. */}
-            {view === 'list' && (
-              <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
-                <button onClick={() => switchDataset('active')} className={`px-3 py-1 rounded-md text-sm font-medium ${dataset === 'active' ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`}>Active ({active.length})</button>
-                <button onClick={() => switchDataset('done')} className={`px-3 py-1 rounded-md text-sm font-medium ${dataset === 'done' ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`}>Done ({done.length})</button>
+        {/* Page header */}
+        <header className={`${BAND} pt-[26px] px-7 pb-5 border-b-2 border-[#201e1d]`}>
+          <div className="flex items-end gap-5 flex-wrap">
+            <h1 className="m-0 text-[34px] font-extrabold tracking-[-0.03em] leading-none">Deadlines</h1>
+            <div className="text-[13px] text-[#605d5d] pb-[3px]">{total.toLocaleString('en-GB')} deadline{total === 1 ? '' : 's'} tracked across {clientsTracked.toLocaleString('en-GB')} client{clientsTracked === 1 ? '' : 's'}</div>
+            {lastSync && <div className={`ml-auto ${NARROW} text-[11px] uppercase tracking-[0.1em] text-[#605d5d]`}>Synced {formatDateOnly(lastSync)}</div>}
+          </div>
+        </header>
+
+        {/* Coverage strip */}
+        {attention > 0 && (
+          <div className={`${BAND} flex items-center gap-3.5 py-[10px] px-7 border-b-2 border-[#201e1d] bg-[#ffe0d9]`}>
+            <span className={`${kicker} text-[#7c1405]`}>Coverage</span>
+            <span className="text-[13px] text-[#201e1d]">
+              {cov!.ok.toLocaleString('en-GB')} of {clientTotal.toLocaleString('en-GB')} clients fully monitored — {cov!.unmonitored} unmonitored, {cov!.under_monitored} under-monitored
+            </span>
+            <button onClick={() => setShowCoverage((o) => !o)} className="ml-auto border border-[#7c1405] bg-transparent text-[#7c1405] px-3 py-1 text-[12px] font-bold hover:bg-[#7c1405] hover:text-[#ffe0d9]">
+              {showCoverage ? 'Hide breakdown' : `Review ${attention} client${attention === 1 ? '' : 's'}`}
+            </button>
+          </div>
+        )}
+        {showCoverage && rollup && <CoverageDrawer rollup={rollup} />}
+
+        {/* Triage tiles */}
+        <div className={`${BAND} grid grid-cols-5 border-b-2 border-[#201e1d]`}>
+          {tileDefs.map((t) => (
+            <button
+              key={t.id} onClick={() => setTile(t.id)}
+              className={`text-left border-0 border-r border-[#d7d3d3] pt-4 px-5 pb-[14px] block hover:bg-[#eae9e9] ${tile === t.id ? 'bg-[#eae9e9]' : 'bg-transparent'}`}
+            >
+              <div className="flex items-baseline gap-2">
+                <span className={`text-[30px] font-extrabold tracking-[-0.03em] leading-none ${t.num}`}>{t.count.toLocaleString('en-GB')}</span>
+                <span className={`${NARROW} text-[11px] uppercase tracking-[0.1em] text-[#605d5d]`}>{t.unit}</span>
               </div>
-            )}
-            <div className="ml-auto flex items-center gap-1 bg-slate-100 rounded-lg p-1">
-              <button onClick={() => setView('list')} className={`px-3 py-1 rounded-md text-sm font-medium flex items-center gap-1 ${view === 'list' ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`}><ListIcon size={14} /> List</button>
-              <button onClick={() => setView('calendar')} className={`px-3 py-1 rounded-md text-sm font-medium flex items-center gap-1 ${view === 'calendar' ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`}><CalendarDays size={14} /> Calendar</button>
-            </div>
+              <div className="mt-1.5 text-[12.5px] font-semibold text-[#444141]">{t.label}</div>
+              <div className={`mt-2 h-[3px] w-full ${t.rule}`} />
+            </button>
+          ))}
+        </div>
+
+        {/* Toolbar */}
+        <div className={`${BAND} flex items-center gap-2 flex-wrap py-3 px-7 border-b border-[#d7d3d3] bg-[#eae9e9]`}>
+          <span className={`${NARROW} text-[10px] font-bold uppercase tracking-[0.12em] text-[#605d5d]`}>Group</span>
+          <div className="flex border border-[#201e1d]">
+            {([['week', 'Week'], ['assignee', 'Assignee'], ['clienttype', 'Client type']] as [GroupBy, string][]).map(([v, lbl]) => (
+              <button key={v} onClick={() => setGroupBy(v)} className={`border-0 border-r border-[#d7d3d3] last:border-r-0 px-3 py-1.5 text-[12px] font-semibold ${groupBy === v ? 'bg-[#f3f2f2] text-[#201e1d]' : 'bg-white text-[#444141]'}`}>{lbl}</button>
+            ))}
           </div>
 
-          {/* Filters */}
-          <div className="flex flex-wrap items-center gap-2">
-            <select value={authority} onChange={(e) => setAuthority(e.target.value)} className={selCls}>
-              <option value="">All authorities</option>
-              {AUTHORITY_ORDER.map((a) => <option key={a} value={a}>{AUTHORITY_LABELS[a]}</option>)}
-            </select>
-            <select value={assignee} onChange={(e) => setAssignee(e.target.value)} className={selCls}>
-              <option value="">All assignees</option>
-              {members.map((m: any) => <option key={m.id} value={m.id}>{m.name}</option>)}
-            </select>
-            <ClientTypeFilter value={clientTypes} onChange={setClientTypes} />
-            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={selCls} title="From" />
-            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={selCls} title="To" />
-            <label className="flex items-center gap-1.5 text-sm text-slate-600 px-2">
-              <input type="checkbox" checked={overdueOnly} onChange={(e) => setOverdueOnly(e.target.checked)} className="w-4 h-4 text-red-600 rounded" /> Overdue only
-            </label>
-            {hasFilters && <button onClick={clearFilters} className="text-sm text-blue-600 hover:underline">Clear</button>}
+          <span className="w-3" />
+          <span className={`${NARROW} text-[10px] font-bold uppercase tracking-[0.12em] text-[#605d5d]`}>Status</span>
+          <div className="flex gap-1.5 flex-wrap">
+            {CHIP_STATUSES.map((s) => {
+              const on = statuses.includes(s);
+              return (
+                <button key={s} onClick={() => setStatuses((prev) => on ? prev.filter((x) => x !== s) : [...prev, s])}
+                  className={`px-2.5 py-[5px] text-[12px] font-semibold border ${on ? 'bg-[#201e1d] text-[#f3f2f2] border-[#201e1d]' : 'bg-white text-[#605d5d] border-[#bab6b6]'}`}>{STATUS_LABELS[s]}</button>
+              );
+            })}
           </div>
-          {/* Status chips — LIST-view only, and context-sensitive to the toggle:
-              Active shows the not-done statuses, Done shows the done statuses. */}
-          {view === 'list' && (
-            <div className="flex flex-wrap gap-1.5">
-              {(dataset === 'active' ? NOT_DONE_STATUSES : DONE_STATUSES).map((s) => {
-                const on = statuses.includes(s);
-                return (
-                  <button
-                    key={s}
-                    onClick={() => setStatuses((prev) => on ? prev.filter((x) => x !== s) : [...prev, s])}
-                    className={`px-2 py-0.5 rounded-full text-xs font-medium border ${on ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'}`}
-                  >{STATUS_LABELS[s]}</button>
-                );
-              })}
+
+          <div className="ml-auto flex items-center gap-2">
+            <select value={authority} onChange={(e) => setAuthority(e.target.value)} className="border border-[#bab6b6] bg-white px-2 py-1.5 text-[12px] font-medium">
+              <option value="">All authorities</option>
+              <option value="companies_house">Companies House</option>
+              <option value="hmrc">HMRC</option>
+              <option value="pension_regulator">Pension Regulator</option>
+            </select>
+            <select value={assignee} onChange={(e) => setAssignee(e.target.value)} className="border border-[#bab6b6] bg-white px-2 py-1.5 text-[12px] font-medium">
+              <option value="">All assignees</option>
+              {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+            <button onClick={clearFilters} className="border border-transparent bg-transparent px-1 py-1.5 text-[12px] font-semibold text-[#ae1800] underline">Clear</button>
+          </div>
+        </div>
+
+        {/* Bulk action bar */}
+        {selectedCount > 0 && (
+          <div className={`${BAND} flex items-center gap-3 py-[10px] px-7 bg-[#201e1d] text-[#f3f2f2] sticky top-0 z-30`}>
+            <span className="text-[13px] font-bold">{selectedCount} deadline{selectedCount === 1 ? '' : 's'} selected</span>
+            <span className="w-px h-[18px] bg-[#605d5d]" />
+            <div className="relative">
+              <button onClick={() => setAssignOpen((o) => !o)} disabled={busy} className="border border-[#7d7979] bg-transparent text-[#f3f2f2] px-3 py-[5px] text-[12px] font-semibold hover:bg-[#ec3013] hover:border-[#ec3013] disabled:opacity-40">Assign to…</button>
+              {assignOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setAssignOpen(false)} />
+                  <div className="absolute left-0 mt-1 w-56 max-h-64 overflow-y-auto bg-white border border-[#201e1d] z-20 text-[#201e1d]">
+                    {members.map((m) => (
+                      <button key={m.id} onClick={() => bulkAssign(m.id, m.name)} className="w-full text-left px-3 py-1.5 text-[13px] hover:bg-[#eae9e9]">{m.name}</button>
+                    ))}
+                    {members.length === 0 && <div className="px-3 py-2 text-[12px] text-[#605d5d]">No team members</div>}
+                  </div>
+                </>
+              )}
             </div>
+            <button onClick={bulkAdvance} disabled={busy} className="border border-[#7d7979] bg-transparent text-[#f3f2f2] px-3 py-[5px] text-[12px] font-semibold hover:bg-[#ec3013] hover:border-[#ec3013] disabled:opacity-40">Advance status</button>
+            <button onClick={() => notify("Client chase isn't wired up yet.")} disabled={busy} className="border border-[#7d7979] bg-transparent text-[#f3f2f2] px-3 py-[5px] text-[12px] font-semibold hover:bg-[#ec3013] hover:border-[#ec3013] disabled:opacity-40">Send client chase</button>
+            <button onClick={() => bulkStatus('not_applicable', 'Marked not applicable.')} disabled={busy} className="border border-[#7d7979] bg-transparent text-[#f3f2f2] px-3 py-[5px] text-[12px] font-semibold hover:bg-[#ec3013] hover:border-[#ec3013] disabled:opacity-40">Mark not applicable</button>
+            <button onClick={clearSelection} className="ml-auto border-0 bg-transparent text-[#bab6b6] text-[12px] font-semibold underline">Deselect</button>
+          </div>
+        )}
+
+        {/* Table header */}
+        <div className={`${BAND} ${GRID} grid items-center px-7 h-[34px] bg-[#201e1d] text-[#f3f2f2] sticky top-0 z-20 ${NARROW} text-[10.5px] font-semibold uppercase tracking-[0.12em]`}>
+          <div><input type="checkbox" checked={allChecked} onChange={toggleAll} className="w-3.5 h-3.5 accent-[#ec3013] cursor-pointer" /></div>
+          <div>Client</div><div>Obligation</div><div>Due</div><div>Remaining</div>
+          <div>Status</div><div>Assignee</div><div className="text-right">Fee</div><div />
+        </div>
+
+        {/* Body */}
+        <div>
+          {isLoading ? (
+            <div className={`${BAND} py-16 px-7 text-[#605d5d] text-[14px]`}>Loading deadlines…</div>
+          ) : isError ? (
+            <div className={`${BAND} py-16 px-7 text-[#ae1800] text-[14px]`}>Couldn't load deadlines.</div>
+          ) : shown.length === 0 ? (
+            <div className={`${BAND} py-16 px-7 border-b border-[#d7d3d3]`}>
+              <div className="text-[18px] font-bold">Nothing matches these filters.</div>
+              <div className="mt-1.5 text-[13px] text-[#605d5d]">Clear the status chips or widen the authority filter.</div>
+            </div>
+          ) : (
+            groups.map((g) => (
+              <section key={g.key}>
+                <div className={`${BAND} flex items-center gap-3 py-[11px] px-7 border-t-2 border-[#201e1d] border-b border-[#d7d3d3] ${g.overdue ? 'bg-[#ffe0d9]' : 'bg-[#eae9e9]'}`}>
+                  <span className={`text-[14px] font-extrabold tracking-[-0.01em] ${g.overdue ? 'text-[#7c1405]' : 'text-[#201e1d]'}`}>{g.label}</span>
+                  <span className={`${NARROW} text-[11px] uppercase tracking-[0.1em] ${g.overdue ? 'text-[#9e3526]' : 'text-[#605d5d]'}`}>
+                    {g.rows.length} {g.rows.length === 1 ? 'item' : 'items'}{g.overdue ? ` · ${g.overdue} overdue` : ''}
+                  </span>
+                </div>
+                {g.rows.map((d) => (
+                  <DeadlineRow key={d.id} d={d} checked={selected.has(d.id)} onCheck={() => toggleRow(d.id)} onAdvance={() => advance(d)} />
+                ))}
+              </section>
+            ))
           )}
         </div>
 
-        {isLoading ? (
-          <div className="p-12 text-center text-slate-400 animate-pulse">Loading deadlines…</div>
-        ) : isError ? (
-          <div className="p-12 text-center text-red-500">Couldn't load deadlines.</div>
-        ) : rows.length === 0 ? (
-          <div className="p-12 text-center text-slate-400">No deadlines match these filters.</div>
-        ) : view === 'calendar' ? (
-          // Calendar always shows EVERYTHING (active + done) — the Active/Done
-          // toggle is a list-only control and does not affect the calendar.
-          <CalendarView rows={rows} />
-        ) : dataset === 'active' ? (
-          groups.length > 0 ? (
-            <ListView groups={groups} groupBy={groupBy} />
-          ) : (
-            <div className="p-10 text-center text-slate-400 text-sm">No active deadlines match — try a different chip or the Done view.</div>
-          )
-        ) : shownDone.length > 0 ? (
-          <DoneView rows={shownDone} />
-        ) : (
-          <div className="p-10 text-center text-slate-400 text-sm">No done deadlines match this filter.</div>
-        )}
+        {/* Footer */}
+        <footer className={`${BAND} flex items-center gap-4 pt-4 px-7 pb-10 border-t-2 border-[#201e1d]`}>
+          <span className="text-[12.5px] text-[#605d5d]">Showing {shown.length.toLocaleString('en-GB')} of {total.toLocaleString('en-GB')} · ordered by statutory due date · overdue weeks first</span>
+        </footer>
+      </div>
+
+      {toast && <div className="fixed bottom-6 right-6 z-50 px-4 py-3 bg-[#201e1d] text-[#f3f2f2] text-[13px] font-medium shadow-lg">{toast}</div>}
+    </div>
+  );
+}
+
+function DeadlineRow({ d, checked, onCheck, onAdvance }: { d: Deadline; checked: boolean; onCheck: () => void; onAdvance: () => void }) {
+  const p = pill(d);
+  const period = formatPeriod(d.period_start, d.period_end);
+  const rowBg = checked ? 'bg-[#ffe0d9]' : d.overdue ? 'bg-[#fff2ef]' : 'bg-[#f3f2f2]';
+  const edge = d.overdue ? 'shadow-[inset_4px_0_0_0_#ec3013]' : '';
+  const ctype = CLIENT_TYPE_META[clientTypeOf({ entity_type: d.client_entity_type, mtd_status: d.client_mtd_status })].label;
+  return (
+    <div className={`${BAND} ${GRID} grid items-center py-[13px] px-7 border-b border-[#d7d3d3] hover:bg-[#eae9e9] ${rowBg} ${edge}`}>
+      <div><input type="checkbox" checked={checked} onChange={onCheck} className="w-3.5 h-3.5 accent-[#ec3013] cursor-pointer" /></div>
+
+      <div className="pr-4 min-w-0">
+        <Link to={`/clients/${d.client_id}`} className="block text-[14.5px] font-bold tracking-[-0.01em] text-[#201e1d] no-underline truncate hover:text-[#ec3013]">{d.client_name ?? '—'}</Link>
+        <div className={`mt-[3px] ${NARROW} text-[11px] uppercase tracking-[0.06em] text-[#605d5d] truncate`}>{ctype}{d.external_ref ? ` · ${d.external_ref}` : ''}</div>
+      </div>
+
+      <div className="pr-4 min-w-0">
+        <div className="text-[13.5px] font-medium text-[#201e1d] truncate">{d.deadline_type.name}</div>
+        <div className="mt-[3px] flex items-center gap-1.5">
+          <span className={`${NARROW} text-[10px] font-bold tracking-[0.1em] px-[5px] py-px border border-[#bab6b6] text-[#605d5d]`}>{AUTH_SHORT[d.deadline_type.authority]}</span>
+          {period !== '—' && <span className={`${NARROW} text-[11px] uppercase tracking-[0.06em] text-[#605d5d] truncate`}>{period}</span>}
+        </div>
+      </div>
+
+      <div className="text-[13.5px] font-semibold tabular-nums whitespace-nowrap">{formatDateOnly(d.statutory_due_date)}</div>
+
+      <div><span className={`inline-block px-[9px] py-[3px] text-[12px] font-bold whitespace-nowrap ${p.cls}`}>{p.text}</span></div>
+
+      <div>
+        <button onClick={onAdvance} title="Click to advance status" className="inline-flex items-center gap-[7px] border border-[#d7d3d3] bg-white pl-[7px] pr-[9px] py-1 text-[12px] font-semibold text-[#201e1d] whitespace-nowrap hover:border-[#201e1d]">
+          <span className={`w-2 h-2 shrink-0 ${STATUS_DOT[d.status]}`} />{STATUS_LABELS[d.status]}
+        </button>
+      </div>
+
+      <div className="min-w-0 pr-3">
+        <div className="text-[13px] font-medium text-[#444141] truncate">{d.assignee_name ?? 'Unassigned'}</div>
+        <div className={`mt-[3px] ${NARROW} text-[11px] uppercase tracking-[0.06em] text-[#605d5d]`}>{d.last_synced_at ? `Synced ${formatDateOnly(d.last_synced_at)}` : 'No activity'}</div>
+      </div>
+
+      {/* Fee: no source on the Deadline model — kept for layout, rendered em-dash. */}
+      <div className="text-right text-[13px] font-semibold tabular-nums text-[#444141]">—</div>
+
+      <div className="text-right">
+        <Link to={`/clients/${d.client_id}`} className={`${NARROW} text-[11px] font-bold uppercase tracking-[0.1em] text-[#ae1800] no-underline hover:text-[#ec3013] hover:underline`}>Open</Link>
       </div>
     </div>
   );
 }
 
-const selCls = 'border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100';
-
-// Multi-select "All client types" filter — checkbox popover. Ticked types combine
-// (OR) and compose with the authority/assignee filters. Empty = all.
-function ClientTypeFilter({ value, onChange }: { value: ClientType[]; onChange: (v: ClientType[]) => void }) {
-  const [open, setOpen] = useState(false);
-  const toggle = (t: ClientType) => onChange(value.includes(t) ? value.filter((x) => x !== t) : [...value, t]);
-  const label = value.length === 0 ? 'All client types' : value.length === 1 ? CLIENT_TYPE_META[value[0]].label : `${value.length} client types`;
-  return (
-    <div className="relative">
-      <button type="button" onClick={() => setOpen((o) => !o)} className={`${selCls} flex items-center gap-1.5 ${value.length ? 'text-slate-900 border-blue-300' : 'text-slate-600'}`}>
-        {label} <ChevronDown size={14} className="text-slate-400" />
-      </button>
-      {open && (
-        <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 mt-1 w-52 bg-white border border-slate-200 rounded-lg shadow-lg z-20 py-1">
-            {CLIENT_TYPE_ORDER.map((t) => (
-              <label key={t} className="flex items-center gap-2.5 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 cursor-pointer">
-                <input type="checkbox" checked={value.includes(t)} onChange={() => toggle(t)} className="w-4 h-4 rounded text-blue-600" />
-                {CLIENT_TYPE_META[t].label}
-              </label>
-            ))}
-            {value.length > 0 && (
-              <button onClick={() => onChange([])} className="w-full text-left px-3 py-1.5 text-xs text-blue-600 hover:bg-slate-50 border-t border-slate-100 mt-1">Clear client types</button>
-            )}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-function Toggle({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: [string, string][] }) {
-  return (
-    <div className="flex items-center gap-2">
-      <span className="text-xs font-semibold text-slate-400 uppercase">{label}</span>
-      <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
-        {options.map(([v, lbl]) => (
-          <button key={v} onClick={() => onChange(v)} className={`px-3 py-1 rounded-md text-sm font-medium ${value === v ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`}>{lbl}</button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ── Region 1: Needs Attention ────────────────────────────────────────────────
-function NeedsAttention({ rollup }: { rollup: CoverageRollup | undefined }) {
-  const [openU, setOpenU] = useState(true);
-  const [openUM, setOpenUM] = useState(false);
-  // ALL hooks must run unconditionally before any early return (Rules of Hooks).
-  // Reads through optionally-undefined rollup so it's safe pre-load.
+// The old "Needs attention" breakdown, reachable from the coverage strip. Groups
+// unmonitored clients by their first reason code; under-monitored listed flat.
+function CoverageDrawer({ rollup }: { rollup: CoverageRollup }) {
   const byReason = useMemo(() => {
     const m = new Map<string, CoverageRollup['unmonitored']>();
-    for (const c of rollup?.unmonitored ?? []) {
+    for (const c of rollup.unmonitored) {
       const code = c.reason_codes[0] ?? 'unknown';
       if (!m.has(code)) m.set(code, []);
       m.get(code)!.push(c);
@@ -235,283 +444,38 @@ function NeedsAttention({ rollup }: { rollup: CoverageRollup | undefined }) {
     return [...m.entries()].sort((a, b) => b[1].length - a[1].length);
   }, [rollup]);
 
-  if (!rollup) return <div className="h-24 bg-slate-100 rounded-xl animate-pulse" />;
-  const { counts, under_monitored } = rollup;
-
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-      <div className="px-5 py-4 border-b border-slate-200 bg-slate-50/50 flex items-center gap-2">
-        <AlertTriangle size={18} className="text-amber-500" />
-        <h3 className="font-bold text-slate-900 text-sm uppercase tracking-tight">Needs attention</h3>
-        <span className="ml-auto text-sm font-semibold text-slate-600">
-          <span className="text-red-600">{counts.unmonitored} unmonitored</span> · <span className="text-amber-600">{counts.under_monitored} under-monitored</span>
-        </span>
-      </div>
-
-      {/* Unmonitored */}
-      <Section open={openU} onToggle={() => setOpenU((o) => !o)} title={`Unmonitored (${counts.unmonitored})`} accent="red">
-        {byReason.map(([code, clients]) => {
-          const meta = reasonMeta(code);
-          return (
-            <div key={code} className="px-5 py-3 border-t border-slate-100">
-              <div className="text-xs font-semibold text-slate-500 mb-2">{meta.message} · {clients.length}</div>
-              <div className="flex flex-wrap gap-2">
-                {clients.map((c) => (
-                  <Link key={c.client_id} to={`/clients/${c.client_id}`} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-50 border border-red-200 text-sm text-slate-700 hover:bg-red-100">
-                    {c.client_name} <span className="text-red-600 font-medium">· {meta.action}</span> <ArrowRight size={12} className="text-red-400" />
-                  </Link>
-                ))}
-              </div>
+    <div className={`${BAND} border-b-2 border-[#201e1d] bg-[#f3f2f2]`}>
+      {byReason.map(([code, clients]) => {
+        const meta = reasonMeta(code);
+        return (
+          <div key={code} className="px-7 py-3 border-b border-[#d7d3d3]">
+            <div className="text-[12px] font-semibold text-[#605d5d] mb-2">{meta.message} · {clients.length}</div>
+            <div className="flex flex-wrap gap-2">
+              {clients.map((c) => (
+                <Link key={c.client_id} to={`/clients/${c.client_id}`} className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#ffe0d9] border border-[#ffc4b8] text-[13px] text-[#201e1d] no-underline hover:bg-[#ffc4b8]">
+                  {c.client_name} <span className="text-[#7c1405] font-semibold">· {meta.action}</span>
+                </Link>
+              ))}
             </div>
-          );
-        })}
-      </Section>
-
-      {/* Under-monitored (kept visible even when empty) */}
-      <Section open={openUM} onToggle={() => setOpenUM((o) => !o)} title={`Under-monitored (${counts.under_monitored})`} accent="amber">
-        {under_monitored.length === 0 ? (
-          <div className="px-5 py-4 border-t border-slate-100 text-sm text-slate-400">None — clients with a flagged duty missing its deadlines will appear here.</div>
-        ) : (
-          <div className="px-5 py-3 border-t border-slate-100 flex flex-wrap gap-2">
-            {under_monitored.map((c) => {
+          </div>
+        );
+      })}
+      {rollup.under_monitored.length > 0 && (
+        <div className="px-7 py-3">
+          <div className={`${NARROW} text-[11px] font-bold uppercase tracking-[0.12em] text-[#605d5d] mb-2`}>Under-monitored</div>
+          <div className="flex flex-wrap gap-2">
+            {rollup.under_monitored.map((c) => {
               const meta = reasonMeta(c.reason_codes[0] ?? '');
               return (
-                <Link key={c.client_id} to={`/clients/${c.client_id}`} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-200 text-sm text-slate-700 hover:bg-amber-100">
-                  {c.client_name} <span className="text-amber-600 font-medium">· {meta.action}</span> <ArrowRight size={12} className="text-amber-400" />
+                <Link key={c.client_id} to={`/clients/${c.client_id}`} className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#f7e7c9] border border-[#e6cfa4] text-[13px] text-[#201e1d] no-underline hover:brightness-95">
+                  {c.client_name} <span className="text-[#6b4410] font-semibold">· {meta.action}</span>
                 </Link>
               );
             })}
           </div>
-        )}
-      </Section>
-    </div>
-  );
-}
-
-function Section({ open, onToggle, title, accent, children }: { open: boolean; onToggle: () => void; title: string; accent: 'red' | 'amber'; children: React.ReactNode }) {
-  return (
-    <div>
-      <button onClick={onToggle} className="w-full px-5 py-3 flex items-center gap-2 hover:bg-slate-50 text-left">
-        {open ? <ChevronDown size={16} className="text-slate-400" /> : <ChevronRight size={16} className="text-slate-400" />}
-        <span className={`text-sm font-bold ${accent === 'red' ? 'text-red-700' : 'text-amber-700'}`}>{title}</span>
-      </button>
-      {open && <div>{children}</div>}
-    </div>
-  );
-}
-
-// ── Region 2: List view ──────────────────────────────────────────────────────
-const AUTH_ICON: Record<string, React.ReactNode> = {
-  companies_house: <Building2 size={13} className="text-indigo-500" />,
-  hmrc: <Landmark size={13} className="text-blue-500" />,
-};
-
-function ListView({ groups, groupBy }: { groups: Group[]; groupBy: GroupBy }) {
-  return (
-    <div className="divide-y divide-slate-200">
-      {groups.map((g) => (
-        <div key={g.key}>
-          <div className="px-5 py-2.5 bg-slate-50/60 flex items-center gap-2 sticky top-0">
-            <span className="font-bold text-slate-700 text-sm">{g.label}</span>
-            <span className="text-xs text-slate-400">· {g.rows.length}</span>
-          </div>
-          <table className="w-full text-left text-sm">
-            <tbody className="divide-y divide-slate-100">
-              {g.rows.map((d) => {
-                const pill = daysPill(d);
-                return (
-                  <tr key={d.id} className={`hover:bg-slate-50 ${d.overdue ? 'bg-red-50/40' : ''}`}>
-                    {groupBy !== 'client' && (
-                      <td className="px-5 py-3 w-1/4">
-                        <Link to={`/clients/${d.client_id}`} className="font-semibold text-slate-900 hover:text-blue-600">{d.client_name ?? '—'}</Link>
-                      </td>
-                    )}
-                    <td className="px-5 py-3">
-                      <span className="inline-flex items-center gap-1.5 text-slate-700">
-                        {AUTH_ICON[d.deadline_type.authority]} {d.deadline_type.name}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3 text-slate-900 font-medium whitespace-nowrap">{formatDateOnly(d.statutory_due_date)}</td>
-                    <td className="px-5 py-3 whitespace-nowrap"><span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${pill.className}`}>{pill.text}</span></td>
-                    <td className="px-5 py-3 text-slate-500 text-xs whitespace-nowrap">{STATUS_LABELS[d.status]}</td>
-                    {groupBy !== 'assignee' && <td className="px-5 py-3 text-slate-500 text-xs whitespace-nowrap">{d.assignee_name ?? '—'}</td>}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
         </div>
-      ))}
+      )}
     </div>
   );
-}
-
-// ── Region 2: Calendar view (month grid) ─────────────────────────────────────
-function CalendarView({ rows }: { rows: Deadline[] }) {
-  const [month, setMonth] = useState(() => { const d = new Date(); return { y: d.getUTCFullYear(), m: d.getUTCMonth() }; });
-  const byDate = useMemo(() => {
-    const map = new Map<string, Deadline[]>();
-    for (const d of rows) {
-      if (!map.has(d.statutory_due_date)) map.set(d.statutory_due_date, []);
-      map.get(d.statutory_due_date)!.push(d);
-    }
-    return map;
-  }, [rows]);
-
-  const first = new Date(Date.UTC(month.y, month.m, 1));
-  const startDow = (first.getUTCDay() + 6) % 7; // Monday=0
-  const daysInMonth = new Date(Date.UTC(month.y, month.m + 1, 0)).getUTCDate();
-  const cells: (string | null)[] = [];
-  for (let i = 0; i < startDow; i++) cells.push(null);
-  for (let d = 1; d <= daysInMonth; d++) cells.push(`${month.y}-${String(month.m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const label = new Date(Date.UTC(month.y, month.m, 1)).toLocaleString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
-  const shift = (n: number) => setMonth((c) => { const t = c.m + n; return { y: c.y + Math.floor(t / 12), m: ((t % 12) + 12) % 12 }; });
-
-  return (
-    <div className="p-4">
-      <div className="flex items-center justify-between mb-3">
-        <button onClick={() => shift(-1)} className="px-3 py-1 text-sm text-slate-500 hover:text-slate-800">‹ Prev</button>
-        <span className="font-bold text-slate-900">{label}</span>
-        <button onClick={() => shift(1)} className="px-3 py-1 text-sm text-slate-500 hover:text-slate-800">Next ›</button>
-      </div>
-      <div className="grid grid-cols-7 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden">
-        {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => (
-          <div key={d} className="bg-slate-50 text-center text-xs font-bold text-slate-500 py-1.5">{d}</div>
-        ))}
-        {cells.map((date, i) => (
-          <div key={i} className={`bg-white min-h-[88px] p-1.5 ${date === todayStr ? 'ring-2 ring-inset ring-blue-300' : ''}`}>
-            {date && (
-              <>
-                <div className="text-[11px] text-slate-400 mb-1">{Number(date.slice(8, 10))}</div>
-                <div className="space-y-1">
-                  {(byDate.get(date) ?? []).map((d) => (
-                    <Link key={d.id} to={`/clients/${d.client_id}`} title={`${d.client_name} — ${d.deadline_type.name}`}
-                      className={`block truncate text-[10px] px-1 py-0.5 rounded ${d.overdue ? 'bg-red-100 text-red-700' : 'bg-blue-50 text-blue-700'} hover:opacity-80`}>
-                      {d.client_name}: {d.deadline_type.code}
-                    </Link>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ── Done view (the Done half of the Active/Done toggle) ───────────────────────
-// Most-recently-completed first (completed_at desc); rows without a completion
-// stamp (e.g. submitted / not_applicable) fall below, ordered by due date desc.
-// The days-overdue pill is meaningless once done, so we show the status label.
-const byDoneRecency = (a: Deadline, b: Deadline) => {
-  const ca = a.completed_at ?? '';
-  const cb = b.completed_at ?? '';
-  if (ca && cb) return cb.localeCompare(ca);   // both completed → most recent first
-  if (ca !== cb) return ca ? -1 : 1;           // completed ones ahead of un-stamped
-  return b.statutory_due_date.localeCompare(a.statutory_due_date); // neither → due date desc
-};
-
-function DoneView({ rows }: { rows: Deadline[] }) {
-  const ordered = [...rows].sort(byDoneRecency);
-  return (
-    <table className="w-full text-left text-sm">
-      <tbody className="divide-y divide-slate-100">
-        {ordered.map((d) => (
-          <tr key={d.id} className="text-slate-500 hover:bg-slate-50">
-            <td className="px-5 py-2.5 w-1/4">
-              <Link to={`/clients/${d.client_id}`} className="font-medium text-slate-600 hover:text-blue-600">{d.client_name ?? '—'}</Link>
-            </td>
-            <td className="px-5 py-2.5">{d.deadline_type.name}</td>
-            <td className="px-5 py-2.5 whitespace-nowrap">{formatDateOnly(d.statutory_due_date)}</td>
-            <td className="px-5 py-2.5 text-xs whitespace-nowrap"><span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">{STATUS_LABELS[d.status]}</span></td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
-
-// ── grouping ─────────────────────────────────────────────────────────────────
-interface Group { key: string; label: string; rows: Deadline[]; }
-
-// Ascending by statutory due date, client name as tiebreak (natural read order).
-const byDateAsc = (a: Deadline, b: Deadline) =>
-  a.statutory_due_date.localeCompare(b.statutory_due_date) || (a.client_name ?? '').localeCompare(b.client_name ?? '');
-// Descending by due date (most-recent first), client name tiebreak.
-const byDateDesc = (a: Deadline, b: Deadline) =>
-  b.statutory_due_date.localeCompare(a.statutory_due_date) || (a.client_name ?? '').localeCompare(b.client_name ?? '');
-
-/** Split fetched rows into active vs done — independent of the status filter chips. */
-function partitionDone(rows: Deadline[]): { active: Deadline[]; done: Deadline[] } {
-  const active: Deadline[] = [];
-  const done: Deadline[] = [];
-  for (const d of rows) (DONE_STATUSES.includes(d.status) ? done : active).push(d);
-  return { active, done };
-}
-
-/**
- * Group + order the ACTIVE set.
- *   week     : the CURRENT week (containing today) and later go in the upcoming
- *              section, ascending; earlier weeks go in the overdue section,
- *              descending (most-recent first). Section is decided per WEEK-KEY vs
- *              this week's Monday — NOT per-row — so no week label appears twice.
- *              Within a week, rows read ascending by due date. (The row-level
- *              `overdue` boolean still drives the days-overdue PILL, so a past-due
- *              row sitting in the current-week upcoming group still shows red.)
- *   assignee : one group per assignee (label ASC); within a group, upcoming rows
- *   client     (ascending) then overdue rows (descending) — the same
- *              upcoming-before-overdue intent applied per bucket. [Assignee/Client
- *              handling was under-specified in the brief; this is the chosen shape.]
- */
-function buildActiveGroups(rows: Deadline[], groupBy: GroupBy): Group[] {
-  if (groupBy === 'week') {
-    // This week's Monday, via the SAME helper used for row week-keys, so the
-    // boundary compares like-for-like (ISO 'YYYY-MM-DD' strings sort correctly).
-    const currentWeek = weekStartISO(new Date().toISOString().slice(0, 10));
-    const map = new Map<string, Group>();
-    for (const d of rows) {
-      const wk = weekStartISO(d.statutory_due_date);
-      if (!map.has(wk)) map.set(wk, { key: wk, label: `Week of ${formatDateOnly(wk)}`, rows: [] });
-      map.get(wk)!.rows.push(d);
-    }
-    const arr = [...map.values()];
-    arr.forEach((g) => g.rows.sort(byDateAsc)); // within a week: ascending by due date
-    const upcoming = arr.filter((g) => g.key >= currentWeek).sort((a, b) => a.key.localeCompare(b.key));
-    const overdue = arr.filter((g) => g.key < currentWeek).sort((a, b) => b.key.localeCompare(a.key));
-    return [...upcoming, ...overdue];
-  }
-
-  const map = new Map<string, Group>();
-  for (const d of rows) {
-    let key: string, label: string;
-    if (groupBy === 'assignee') {
-      key = d.assignee_name ?? '~unassigned';
-      label = d.assignee_name ?? 'Unassigned';
-    } else if (groupBy === 'clienttype') {
-      // SAME classifier as the client-type filter — one definition of each category.
-      const ct = clientTypeOf({ entity_type: d.client_entity_type, mtd_status: d.client_mtd_status });
-      key = ct;
-      label = CLIENT_TYPE_META[ct].label;
-    } else {
-      key = d.client_id;
-      label = d.client_name ?? 'Unknown client';
-    }
-    if (!map.has(key)) map.set(key, { key, label, rows: [] });
-    map.get(key)!.rows.push(d);
-  }
-  const arr = [...map.values()];
-  arr.forEach((g) => {
-    const up = g.rows.filter((d) => !d.overdue).sort(byDateAsc);
-    const od = g.rows.filter((d) => d.overdue).sort(byDateDesc);
-    g.rows = [...up, ...od];
-  });
-  // Client-type sections follow the canonical order; other groupings alphabetical.
-  if (groupBy === 'clienttype') {
-    arr.sort((a, b) => CLIENT_TYPE_ORDER.indexOf(a.key as ClientType) - CLIENT_TYPE_ORDER.indexOf(b.key as ClientType));
-  } else {
-    arr.sort((a, b) => a.label.localeCompare(b.label));
-  }
-  return arr;
 }
