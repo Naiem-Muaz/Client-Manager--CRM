@@ -79,17 +79,22 @@ export function weekStartISO(iso: string): string {
 // ── Days pill (overdue boolean is the source of truth) ───────────────────────
 export interface Pill { text: string; className: string; }
 
-const PILL_RED = 'bg-red-100 text-red-700 border border-red-200';
-const PILL_AMBER = 'bg-amber-100 text-amber-700 border border-amber-200';
-const PILL_GREEN = 'bg-emerald-100 text-emerald-700 border border-emerald-200';
+// 5-tier Modernist palette (colours/border only — each consumer supplies its own
+// shape/size wrapper). overdue boolean drives red, never days_remaining <= 0.
+const PILL_RED = 'bg-[#ec3013] text-white border border-[#ec3013]';           // overdue
+const PILL_PINK = 'bg-[#ffe0d9] text-[#7c1405] border border-[#ffc4b8]';       // due today
+const PILL_AMBER = 'bg-[#f7e7c9] text-[#6b4410] border border-[#e6cfa4]';      // ≤ 7
+const PILL_NEUTRAL = 'bg-[#eae7e7] text-[#444141] border border-[#d7d3d3]';    // ≤ 14
+const PILL_GREEN = 'bg-[#e3ece4] text-[#2f5237] border border-[#cddece]';      // > 14
 
 export function daysPill(d: Pick<Deadline, 'overdue' | 'days_remaining'>): Pill {
   if (d.overdue) {
     const n = Math.abs(d.days_remaining);
     return { text: `${n} ${n === 1 ? 'day' : 'days'} overdue`, className: PILL_RED };
   }
-  if (d.days_remaining === 0) return { text: 'Due today', className: PILL_AMBER };
-  if (d.days_remaining <= 14) return { text: `${d.days_remaining} days`, className: PILL_AMBER };
+  if (d.days_remaining === 0) return { text: 'Due today', className: PILL_PINK };
+  if (d.days_remaining <= 7) return { text: `${d.days_remaining} ${d.days_remaining === 1 ? 'day' : 'days'}`, className: PILL_AMBER };
+  if (d.days_remaining <= 14) return { text: `${d.days_remaining} days`, className: PILL_NEUTRAL };
   return { text: `${d.days_remaining} days`, className: PILL_GREEN };
 }
 

@@ -8,7 +8,7 @@ import { useTeamMembers } from '../hooks/useTeam';
 import { clientTypeOf, ClientType, CLIENT_TYPE_META, CLIENT_TYPE_ORDER } from '../lib/entityType';
 import {
   Deadline, formatDateOnly, formatPeriod, STATUS_LABELS, DeadlineStatus,
-  DONE_STATUSES, AUTHORITY_LABELS, Authority, weekStartISO, reasonMeta,
+  DONE_STATUSES, AUTHORITY_LABELS, Authority, weekStartISO, reasonMeta, daysPill,
 } from '../lib/deadlines';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -48,18 +48,6 @@ const AUTH_SHORT: Record<Authority, string> = {
 function nextStatus(s: DeadlineStatus): DeadlineStatus {
   const i = STATUS_FLOW.indexOf(s);
   return i === -1 ? s : STATUS_FLOW[Math.min(i + 1, STATUS_FLOW.length - 1)];
-}
-
-// Days pill — 5 tiers, overdue boolean is the source of truth (design palette).
-function pill(d: Deadline): { text: string; cls: string } {
-  if (d.overdue) {
-    const n = Math.abs(d.days_remaining);
-    return { text: `${n} ${n === 1 ? 'day' : 'days'} overdue`, cls: 'bg-[#ec3013] text-white border border-[#ec3013]' };
-  }
-  if (d.days_remaining === 0) return { text: 'Due today', cls: 'bg-[#ffe0d9] text-[#7c1405] border border-[#ffc4b8]' };
-  if (d.days_remaining <= 7) return { text: `${d.days_remaining} ${d.days_remaining === 1 ? 'day' : 'days'}`, cls: 'bg-[#f7e7c9] text-[#6b4410] border border-[#e6cfa4]' };
-  if (d.days_remaining <= 14) return { text: `${d.days_remaining} days`, cls: 'bg-[#eae7e7] text-[#444141] border border-[#d7d3d3]' };
-  return { text: `${d.days_remaining} days`, cls: 'bg-[#e3ece4] text-[#2f5237] border border-[#cddece]' };
 }
 
 interface Group { key: string; label: string; rows: Deadline[]; overdue: number; }
@@ -171,21 +159,23 @@ export function DeadlinesPage() {
   };
 
   const targets = () => shown.filter((d) => selected.has(d.id));
-  const bulkAdvance = async () => {
+  // Client-side fan-out (no bulk endpoint yet — tracked as a follow-up). Atomic from
+  // the user's side: the list is revalidated to true server state afterwards (never a
+  // misleading optimistic half-applied view), and on ANY row failure a SINGLE error is
+  // shown and the selection is KEPT (not cleared as if it fully succeeded).
+  const runBulk = async (body: (d: Deadline) => Parameters<typeof patchDeadline>[1], label: string) => {
+    const items = targets();
+    if (!items.length) return;
     setBusy(true);
-    try { await Promise.all(targets().map((d) => patchDeadline(d.id, { status: nextStatus(d.status) }))); await mutate(); clearSelection(); }
-    catch { notify('Some updates failed.'); } finally { setBusy(false); }
+    const results = await Promise.allSettled(items.map((d) => patchDeadline(d.id, body(d))));
+    await mutate();
+    setBusy(false);
+    const failed = results.filter((r) => r.status === 'rejected').length;
+    if (failed) notify(`${label} failed for ${failed} of ${items.length} — selection kept; the list shows the current state.`);
+    else { clearSelection(); notify(`${label}: ${items.length} updated.`); }
   };
-  const bulkStatus = async (status: DeadlineStatus, msg: string) => {
-    setBusy(true);
-    try { await Promise.all(targets().map((d) => patchDeadline(d.id, { status }))); await mutate(); clearSelection(); notify(msg); }
-    catch { notify('Some updates failed.'); } finally { setBusy(false); }
-  };
-  const bulkAssign = async (memberId: string, name: string) => {
-    setAssignOpen(false); setBusy(true);
-    try { await Promise.all(targets().map((d) => patchDeadline(d.id, { assigned_to: memberId }))); await mutate(); clearSelection(); notify(`Assigned to ${name}.`); }
-    catch { notify('Some updates failed.'); } finally { setBusy(false); }
-  };
+  const bulkAdvance = () => runBulk((d) => ({ status: nextStatus(d.status) }), 'Advance status');
+  const bulkAssign = (memberId: string, name: string) => { setAssignOpen(false); return runBulk(() => ({ assigned_to: memberId }), `Assign to ${name}`); };
 
   const clearFilters = () => { setAuthority(''); setAssignee(''); setStatuses([]); setQuery(''); setTile('all'); };
 
@@ -332,7 +322,7 @@ export function DeadlinesPage() {
             </div>
             <button onClick={bulkAdvance} disabled={busy} className="border border-[#7d7979] bg-transparent text-[#f3f2f2] px-3 py-[5px] text-[12px] font-semibold hover:bg-[#ec3013] hover:border-[#ec3013] disabled:opacity-40">Advance status</button>
             <button onClick={() => notify("Client chase isn't wired up yet.")} disabled={busy} className="border border-[#7d7979] bg-transparent text-[#f3f2f2] px-3 py-[5px] text-[12px] font-semibold hover:bg-[#ec3013] hover:border-[#ec3013] disabled:opacity-40">Send client chase</button>
-            <button onClick={() => bulkStatus('not_applicable', 'Marked not applicable.')} disabled={busy} className="border border-[#7d7979] bg-transparent text-[#f3f2f2] px-3 py-[5px] text-[12px] font-semibold hover:bg-[#ec3013] hover:border-[#ec3013] disabled:opacity-40">Mark not applicable</button>
+            <button onClick={() => runBulk(() => ({ status: 'not_applicable' }), 'Mark not applicable')} disabled={busy} className="border border-[#7d7979] bg-transparent text-[#f3f2f2] px-3 py-[5px] text-[12px] font-semibold hover:bg-[#ec3013] hover:border-[#ec3013] disabled:opacity-40">Mark not applicable</button>
             <button onClick={clearSelection} className="ml-auto border-0 bg-transparent text-[#bab6b6] text-[12px] font-semibold underline">Deselect</button>
           </div>
         )}
@@ -384,7 +374,7 @@ export function DeadlinesPage() {
 }
 
 function DeadlineRow({ d, checked, onCheck, onAdvance }: { d: Deadline; checked: boolean; onCheck: () => void; onAdvance: () => void }) {
-  const p = pill(d);
+  const p = daysPill(d);
   const period = formatPeriod(d.period_start, d.period_end);
   const rowBg = checked ? 'bg-[#ffe0d9]' : d.overdue ? 'bg-[#fff2ef]' : 'bg-[#f3f2f2]';
   const edge = d.overdue ? 'shadow-[inset_4px_0_0_0_#ec3013]' : '';
@@ -408,7 +398,7 @@ function DeadlineRow({ d, checked, onCheck, onAdvance }: { d: Deadline; checked:
 
       <div className="text-[13.5px] font-semibold tabular-nums whitespace-nowrap">{formatDateOnly(d.statutory_due_date)}</div>
 
-      <div><span className={`inline-block px-[9px] py-[3px] text-[12px] font-bold whitespace-nowrap ${p.cls}`}>{p.text}</span></div>
+      <div><span className={`inline-block px-[9px] py-[3px] text-[12px] font-bold whitespace-nowrap ${p.className}`}>{p.text}</span></div>
 
       <div>
         <button onClick={onAdvance} title="Click to advance status" className="inline-flex items-center gap-[7px] border border-[#d7d3d3] bg-white pl-[7px] pr-[9px] py-1 text-[12px] font-semibold text-[#201e1d] whitespace-nowrap hover:border-[#201e1d]">
