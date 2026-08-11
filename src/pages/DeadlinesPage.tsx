@@ -7,7 +7,7 @@ import {
 import { useTeamMembers } from '../hooks/useTeam';
 import { clientTypeOf, ClientType, CLIENT_TYPE_META, CLIENT_TYPE_ORDER } from '../lib/entityType';
 import {
-  Deadline, formatDateOnly, formatPeriod, STATUS_LABELS, DeadlineStatus,
+  Deadline, formatDateOnly, formatPeriod, STATUS_LABELS, STATUS_ORDER, DeadlineStatus,
   DONE_STATUSES, AUTHORITY_LABELS, Authority, weekStartISO, reasonMeta, daysPill,
 } from '../lib/deadlines';
 
@@ -15,12 +15,9 @@ import {
 // Deadlines — triage-first redesign (Modernist design system).
 // Renders inside AppLayout (which owns the app sidebar + top bar), so the mock's
 // left nav is intentionally dropped; this is the "main column" as a framed panel.
-// Palette/type/spacing are matched to design_handoff_deadlines_page. All values are
-// Tailwind arbitrary utilities so no new styling approach is introduced.
 //
 // DATA NOTES (design ↔ Deadline model reconciliation):
-//  • Fee is intentionally omitted here (not needed on this page; and there's no
-//    fee field on the Deadline model / group fee totals to source).
+//  • Fee is intentionally omitted (not needed on this page; no fee on the model).
 //  • No CRN field → client meta shows client-type (+ external_ref when present);
 //    search covers client name, obligation name and external_ref.
 //  • overdue is driven by the SQL-derived `overdue` boolean (never days_remaining).
@@ -33,7 +30,9 @@ const NARROW = "font-['Archivo_Narrow']";
 const BAND = 'min-w-[1218px]';
 const GRID = 'grid-cols-[40px_minmax(210px,1.7fr)_minmax(200px,1.5fr)_118px_128px_150px_156px_76px]';
 
-// Advance flow for the single-row status button + bulk "Advance status".
+// A group bigger than this starts COLLAPSED — see collapsedByDefault().
+const BIG_GROUP = 25;
+
 const STATUS_FLOW: DeadlineStatus[] = ['not_started', 'in_progress', 'awaiting_client', 'ready_to_file', 'submitted'];
 const CHIP_STATUSES: DeadlineStatus[] = ['not_started', 'in_progress', 'awaiting_client', 'ready_to_file'];
 const STATUS_DOT: Record<DeadlineStatus, string> = {
@@ -51,6 +50,14 @@ function nextStatus(s: DeadlineStatus): DeadlineStatus {
 }
 
 interface Group { key: string; label: string; rows: Deadline[]; overdue: number; }
+
+// Big groups start collapsed so EVERY group header is reachable without scrolling
+// past hundreds of rows (client-type grouping is 693 / 78 / 759 in production —
+// the first group alone buried the other two). A lone group is always expanded:
+// there is nothing to jump to, so collapsing it would only hide the work.
+function collapsedByDefault(g: Group, groupCount: number): boolean {
+  return groupCount > 1 && g.rows.length > BIG_GROUP;
+}
 
 function buildGroups(list: Deadline[], by: GroupBy): Group[] {
   const map = new Map<string, Group>();
@@ -87,10 +94,16 @@ export function DeadlinesPage() {
   const [tile, setTile] = useState<Tile>('all');
   const [groupBy, setGroupBy] = useState<GroupBy>('week');
   const [statuses, setStatuses] = useState<DeadlineStatus[]>([]);
-  const [authority, setAuthority] = useState<string>('');   // server-side
-  const [assignee, setAssignee] = useState<string>('');     // server-side (team member id)
-  const [query, setQuery] = useState('');                   // client-side
+  const [clientTypes, setClientTypes] = useState<ClientType[]>([]);   // client-side
+  const [authority, setAuthority] = useState<string>('');             // server-side
+  const [assignee, setAssignee] = useState<string>('');               // server-side
+  const [query, setQuery] = useState('');                             // client-side
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  // Explicit collapse choices, keyed `${groupBy}:${groupKey}` so switching the
+  // grouping naturally falls back to the defaults rather than carrying stale keys.
+  const [collapseOverrides, setCollapseOverrides] = useState<Record<string, boolean>>({});
+  // Optimistic status overlay: id → status, cleared on revalidate or rollback.
+  const [pendingStatus, setPendingStatus] = useState<Record<string, DeadlineStatus>>({});
   const [showCoverage, setShowCoverage] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -102,13 +115,10 @@ export function DeadlinesPage() {
   const { rollup } = useCoverageRollup();
   const { members } = useTeamMembers();
 
-  // Triage view works the active (non-done) partition; advancing to a done status
-  // drops the row out on the next revalidation.
   const active = useMemo(() => rows.filter((d) => !DONE_STATUSES.includes(d.status)), [rows]);
 
-  // Tile counts are computed over the FULL active partition (ignoring the status
-  // chips, the search box and the selected tile) so they stay accurate while you
-  // narrow the list — matching the design's reasoning.
+  // Tile counts over the FULL active partition (ignoring chips/search/tile) so
+  // they stay accurate while you narrow the list.
   const counts = useMemo(() => {
     let overdue = 0, week = 0, fortnight = 0, unassigned = 0;
     for (const d of active) {
@@ -124,6 +134,7 @@ export function DeadlinesPage() {
     const q = query.trim().toLowerCase();
     return active.filter((d) => {
       if (statuses.length && !statuses.includes(d.status)) return false;
+      if (clientTypes.length && !clientTypes.includes(clientTypeOf({ entity_type: d.client_entity_type, mtd_status: d.client_mtd_status }))) return false;
       if (q) {
         const hay = `${d.client_name ?? ''} ${d.deadline_type.name} ${d.external_ref ?? ''}`.toLowerCase();
         if (!hay.includes(q)) return false;
@@ -134,9 +145,15 @@ export function DeadlinesPage() {
       if (tile === 'unassigned' && d.assigned_to !== null) return false;
       return true;
     });
-  }, [active, statuses, query, tile]);
+  }, [active, statuses, clientTypes, query, tile]);
 
   const groups = useMemo(() => buildGroups(shown, groupBy), [shown, groupBy]);
+
+  const isCollapsed = (g: Group) => collapseOverrides[`${groupBy}:${g.key}`] ?? collapsedByDefault(g, groups.length);
+  const toggleGroup = (g: Group) =>
+    setCollapseOverrides((p) => ({ ...p, [`${groupBy}:${g.key}`]: !isCollapsed(g) }));
+  const setAllCollapsed = (v: boolean) =>
+    setCollapseOverrides((p) => { const n = { ...p }; groups.forEach((g) => { n[`${groupBy}:${g.key}`] = v; }); return n; });
 
   const shownIds = shown.map((d) => d.id);
   const selectedCount = shownIds.filter((id) => selected.has(id)).length;
@@ -151,18 +168,27 @@ export function DeadlinesPage() {
   });
   const clearSelection = () => setSelected(new Set());
 
-  const advance = async (d: Deadline) => {
-    const next = nextStatus(d.status);
-    if (next === d.status) return;
-    try { await patchDeadline(d.id, { status: next }); await mutate(); }
-    catch { notify('Could not update status.'); }
+  // Displayed status = optimistic overlay when one is in flight, else server truth.
+  const effStatus = (d: Deadline): DeadlineStatus => pendingStatus[d.id] ?? d.status;
+  const clearPending = (id: string) => setPendingStatus((p) => { const n = { ...p }; delete n[id]; return n; });
+
+  const setStatus = async (d: Deadline, status: DeadlineStatus) => {
+    if (status === effStatus(d)) return;
+    setPendingStatus((p) => ({ ...p, [d.id]: status }));          // optimistic
+    try {
+      await patchDeadline(d.id, { status });
+      await mutate();                                              // settle to server truth
+      clearPending(d.id);
+    } catch {
+      clearPending(d.id);                                          // rollback
+      notify('Could not update status.');
+    }
   };
 
   const targets = () => shown.filter((d) => selected.has(d.id));
-  // Client-side fan-out (no bulk endpoint yet — tracked as a follow-up). Atomic from
-  // the user's side: the list is revalidated to true server state afterwards (never a
-  // misleading optimistic half-applied view), and on ANY row failure a SINGLE error is
-  // shown and the selection is KEPT (not cleared as if it fully succeeded).
+  // Client-side fan-out (no bulk endpoint yet). Atomic from the user's side: the
+  // list is revalidated to true server state, and on ANY row failure a SINGLE
+  // error is shown and the selection is KEPT.
   const runBulk = async (body: (d: Deadline) => Parameters<typeof patchDeadline>[1], label: string) => {
     const items = targets();
     if (!items.length) return;
@@ -177,14 +203,14 @@ export function DeadlinesPage() {
   const bulkAdvance = () => runBulk((d) => ({ status: nextStatus(d.status) }), 'Advance status');
   const bulkAssign = (memberId: string, name: string) => { setAssignOpen(false); return runBulk(() => ({ assigned_to: memberId }), `Assign to ${name}`); };
 
-  const clearFilters = () => { setAuthority(''); setAssignee(''); setStatuses([]); setQuery(''); setTile('all'); };
+  const clearFilters = () => { setAuthority(''); setAssignee(''); setStatuses([]); setClientTypes([]); setQuery(''); setTile('all'); };
 
   const exportCsv = () => {
     const cell = (v: string | number) => { const s = String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
     const head = ['Client', 'Obligation', 'Authority', 'Due', 'Status', 'Assignee', 'Remaining'];
     const body = shown.map((d) => [
       d.client_name ?? '', d.deadline_type.name, AUTHORITY_LABELS[d.deadline_type.authority],
-      d.statutory_due_date, STATUS_LABELS[d.status], d.assignee_name ?? '',
+      d.statutory_due_date, STATUS_LABELS[effStatus(d)], d.assignee_name ?? '',
       d.overdue ? `${Math.abs(d.days_remaining)} overdue` : `${d.days_remaining}`,
     ].map(cell).join(','));
     const blob = new Blob([[head.join(','), ...body].join('\n')], { type: 'text/csv' });
@@ -193,7 +219,6 @@ export function DeadlinesPage() {
     URL.revokeObjectURL(url);
   };
 
-  // Coverage strip figures.
   const cov = rollup?.counts;
   const clientTotal = cov ? cov.ok + cov.unmonitored + cov.under_monitored : 0;
   const attention = cov ? cov.unmonitored + cov.under_monitored : 0;
@@ -209,6 +234,7 @@ export function DeadlinesPage() {
   ];
 
   const kicker = `${NARROW} text-[11px] font-bold uppercase tracking-[0.12em]`;
+  const collapsedCount = groups.filter(isCollapsed).length;
 
   return (
     <div className={`font-['Archivo'] text-[#201e1d] antialiased`}>
@@ -273,6 +299,12 @@ export function DeadlinesPage() {
               <button key={v} onClick={() => setGroupBy(v)} className={`border-0 border-r border-[#d7d3d3] last:border-r-0 px-3 py-1.5 text-[12px] font-semibold ${groupBy === v ? 'bg-[#f3f2f2] text-[#201e1d]' : 'bg-white text-[#444141]'}`}>{lbl}</button>
             ))}
           </div>
+          {groups.length > 1 && (
+            <button
+              onClick={() => setAllCollapsed(collapsedCount !== groups.length)}
+              className="border border-[#bab6b6] bg-white px-2.5 py-1.5 text-[12px] font-semibold hover:border-[#201e1d]"
+            >{collapsedCount === groups.length ? 'Expand all' : 'Collapse all'}</button>
+          )}
 
           <span className="w-3" />
           <span className={`${NARROW} text-[10px] font-bold uppercase tracking-[0.12em] text-[#605d5d]`}>Status</span>
@@ -287,6 +319,7 @@ export function DeadlinesPage() {
           </div>
 
           <div className="ml-auto flex items-center gap-2">
+            <ClientTypeFilter value={clientTypes} onChange={setClientTypes} />
             <select value={authority} onChange={(e) => setAuthority(e.target.value)} className="border border-[#bab6b6] bg-white px-2 py-1.5 text-[12px] font-medium">
               <option value="">All authorities</option>
               <option value="companies_house">Companies House</option>
@@ -346,19 +379,34 @@ export function DeadlinesPage() {
               <div className="mt-1.5 text-[13px] text-[#605d5d]">Clear the status chips or widen the authority filter.</div>
             </div>
           ) : (
-            groups.map((g) => (
-              <section key={g.key}>
-                <div className={`${BAND} flex items-center gap-3 py-[11px] px-7 border-t-2 border-[#201e1d] border-b border-[#d7d3d3] ${g.overdue ? 'bg-[#ffe0d9]' : 'bg-[#eae9e9]'}`}>
-                  <span className={`text-[14px] font-extrabold tracking-[-0.01em] ${g.overdue ? 'text-[#7c1405]' : 'text-[#201e1d]'}`}>{g.label}</span>
-                  <span className={`${NARROW} text-[11px] uppercase tracking-[0.1em] ${g.overdue ? 'text-[#9e3526]' : 'text-[#605d5d]'}`}>
-                    {g.rows.length} {g.rows.length === 1 ? 'item' : 'items'}{g.overdue ? ` · ${g.overdue} overdue` : ''}
-                  </span>
-                </div>
-                {g.rows.map((d) => (
-                  <DeadlineRow key={d.id} d={d} checked={selected.has(d.id)} onCheck={() => toggleRow(d.id)} onAdvance={() => advance(d)} />
-                ))}
-              </section>
-            ))
+            groups.map((g) => {
+              const collapsed = isCollapsed(g);
+              // Tint only when the group holds MORE THAN ONE item: with 51 single-item
+              // week groups in production every header went red and the signal flattened.
+              // A lone overdue row still carries the 4px red edge marker.
+              const tinted = g.overdue > 0 && g.rows.length >= 2;
+              return (
+                <section key={g.key}>
+                  <button
+                    onClick={() => toggleGroup(g)} aria-expanded={!collapsed}
+                    className={`${BAND} w-full text-left flex items-center gap-3 py-[11px] px-7 border-t-2 border-[#201e1d] border-b border-[#d7d3d3] hover:brightness-[0.98] ${tinted ? 'bg-[#ffe0d9]' : 'bg-[#eae9e9]'}`}
+                  >
+                    <span className={`${NARROW} text-[11px] w-3 shrink-0 ${tinted ? 'text-[#7c1405]' : 'text-[#605d5d]'}`}>{collapsed ? '▸' : '▾'}</span>
+                    <span className={`text-[14px] font-extrabold tracking-[-0.01em] ${tinted ? 'text-[#7c1405]' : 'text-[#201e1d]'}`}>{g.label}</span>
+                    <span className={`${NARROW} text-[11px] uppercase tracking-[0.1em] ${tinted ? 'text-[#9e3526]' : 'text-[#605d5d]'}`}>
+                      {g.rows.length.toLocaleString('en-GB')} {g.rows.length === 1 ? 'item' : 'items'}{g.overdue ? ` · ${g.overdue} overdue` : ''}
+                    </span>
+                    {collapsed && <span className={`ml-auto ${NARROW} text-[11px] uppercase tracking-[0.1em] ${tinted ? 'text-[#9e3526]' : 'text-[#605d5d]'}`}>Show</span>}
+                  </button>
+                  {!collapsed && g.rows.map((d) => (
+                    <DeadlineRow
+                      key={d.id} d={d} status={effStatus(d)} pending={pendingStatus[d.id] !== undefined}
+                      checked={selected.has(d.id)} onCheck={() => toggleRow(d.id)} onSetStatus={(s) => setStatus(d, s)}
+                    />
+                  ))}
+                </section>
+              );
+            })
           )}
         </div>
 
@@ -373,24 +421,28 @@ export function DeadlinesPage() {
   );
 }
 
-function DeadlineRow({ d, checked, onCheck, onAdvance }: { d: Deadline; checked: boolean; onCheck: () => void; onAdvance: () => void }) {
+function DeadlineRow({ d, status, pending, checked, onCheck, onSetStatus }: {
+  d: Deadline; status: DeadlineStatus; pending: boolean; checked: boolean;
+  onCheck: () => void; onSetStatus: (s: DeadlineStatus) => void;
+}) {
+  const [open, setOpen] = useState(false);
   const p = daysPill(d);
   const period = formatPeriod(d.period_start, d.period_end);
   const rowBg = checked ? 'bg-[#ffe0d9]' : d.overdue ? 'bg-[#fff2ef]' : 'bg-[#f3f2f2]';
   const edge = d.overdue ? 'shadow-[inset_4px_0_0_0_#ec3013]' : '';
   const ctype = CLIENT_TYPE_META[clientTypeOf({ entity_type: d.client_entity_type, mtd_status: d.client_mtd_status })].label;
   return (
-    <div className={`${BAND} ${GRID} grid items-center py-[13px] px-7 border-b border-[#d7d3d3] hover:bg-[#eae9e9] ${rowBg} ${edge}`}>
+    <div className={`${BAND} ${GRID} grid items-center py-[9px] px-7 border-b border-[#d7d3d3] hover:bg-[#eae9e9] ${rowBg} ${edge}`}>
       <div><input type="checkbox" checked={checked} onChange={onCheck} className="w-3.5 h-3.5 accent-[#ec3013] cursor-pointer" /></div>
 
       <div className="pr-4 min-w-0">
         <Link to={`/clients/${d.client_id}`} className="block text-[14.5px] font-bold tracking-[-0.01em] text-[#201e1d] no-underline truncate hover:text-[#ec3013]">{d.client_name ?? '—'}</Link>
-        <div className={`mt-[3px] ${NARROW} text-[11px] uppercase tracking-[0.06em] text-[#605d5d] truncate`}>{ctype}{d.external_ref ? ` · ${d.external_ref}` : ''}</div>
+        <div className={`mt-[2px] ${NARROW} text-[11px] uppercase tracking-[0.06em] text-[#605d5d] truncate`}>{ctype}{d.external_ref ? ` · ${d.external_ref}` : ''}</div>
       </div>
 
       <div className="pr-4 min-w-0">
         <div className="text-[13.5px] font-medium text-[#201e1d] truncate">{d.deadline_type.name}</div>
-        <div className="mt-[3px] flex items-center gap-1.5">
+        <div className="mt-[2px] flex items-center gap-1.5">
           <span className={`${NARROW} text-[10px] font-bold tracking-[0.1em] px-[5px] py-px border border-[#bab6b6] text-[#605d5d]`}>{AUTH_SHORT[d.deadline_type.authority]}</span>
           {period !== '—' && <span className={`${NARROW} text-[11px] uppercase tracking-[0.06em] text-[#605d5d] truncate`}>{period}</span>}
         </div>
@@ -400,20 +452,70 @@ function DeadlineRow({ d, checked, onCheck, onAdvance }: { d: Deadline; checked:
 
       <div><span className={`inline-block px-[9px] py-[3px] text-[12px] font-bold whitespace-nowrap ${p.className}`}>{p.text}</span></div>
 
-      <div>
-        <button onClick={onAdvance} title="Click to advance status" className="inline-flex items-center gap-[7px] border border-[#d7d3d3] bg-white pl-[7px] pr-[9px] py-1 text-[12px] font-semibold text-[#201e1d] whitespace-nowrap hover:border-[#201e1d]">
-          <span className={`w-2 h-2 shrink-0 ${STATUS_DOT[d.status]}`} />{STATUS_LABELS[d.status]}
+      {/* Status — click to open the full list; PATCHes and updates optimistically. */}
+      <div className="relative">
+        <button
+          onClick={() => setOpen((o) => !o)} disabled={pending} title="Click to change status"
+          className={`inline-flex items-center gap-[7px] border border-[#d7d3d3] bg-white pl-[7px] pr-[9px] py-1 text-[12px] font-semibold text-[#201e1d] whitespace-nowrap hover:border-[#201e1d] ${pending ? 'opacity-50' : ''}`}
+        >
+          <span className={`w-2 h-2 shrink-0 ${STATUS_DOT[status]}`} />{STATUS_LABELS[status]}
+          <span className={`${NARROW} text-[9px] text-[#605d5d]`}>▾</span>
         </button>
+        {open && (
+          <>
+            <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+            <div className="absolute left-0 mt-1 w-48 bg-white border border-[#201e1d] z-20">
+              {STATUS_ORDER.map((s) => (
+                <button
+                  key={s}
+                  onClick={() => { setOpen(false); onSetStatus(s); }}
+                  className={`w-full text-left px-2.5 py-1.5 text-[12px] font-medium inline-flex items-center gap-2 hover:bg-[#eae9e9] ${s === status ? 'bg-[#f3f2f2] font-bold' : ''}`}
+                >
+                  <span className={`w-2 h-2 shrink-0 ${STATUS_DOT[s]}`} />{STATUS_LABELS[s]}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
-      <div className="min-w-0 pr-3">
-        <div className="text-[13px] font-medium text-[#444141] truncate">{d.assignee_name ?? 'Unassigned'}</div>
-        <div className={`mt-[3px] ${NARROW} text-[11px] uppercase tracking-[0.06em] text-[#605d5d]`}>{d.last_synced_at ? `Synced ${formatDateOnly(d.last_synced_at)}` : 'No activity'}</div>
-      </div>
+      <div className="min-w-0 pr-3 text-[13px] font-medium text-[#444141] truncate">{d.assignee_name ?? 'Unassigned'}</div>
 
       <div className="text-right">
         <Link to={`/clients/${d.client_id}`} className={`${NARROW} text-[11px] font-bold uppercase tracking-[0.1em] text-[#ae1800] no-underline hover:text-[#ec3013] hover:underline`}>Open</Link>
       </div>
+    </div>
+  );
+}
+
+// Multi-select client-type filter (restored from the pre-redesign page, restyled).
+// Ticked types combine (OR) and compose with the other filters. Empty = all.
+function ClientTypeFilter({ value, onChange }: { value: ClientType[]; onChange: (v: ClientType[]) => void }) {
+  const [open, setOpen] = useState(false);
+  const toggle = (t: ClientType) => onChange(value.includes(t) ? value.filter((x) => x !== t) : [...value, t]);
+  const label = value.length === 0 ? 'All client types' : value.length === 1 ? CLIENT_TYPE_META[value[0]].label : `${value.length} client types`;
+  return (
+    <div className="relative">
+      <button
+        type="button" onClick={() => setOpen((o) => !o)}
+        className={`border bg-white px-2 py-1.5 text-[12px] font-medium inline-flex items-center gap-1.5 ${value.length ? 'border-[#201e1d] text-[#201e1d]' : 'border-[#bab6b6] text-[#444141]'}`}
+      >{label} <span className="text-[9px] text-[#605d5d]">▾</span></button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 mt-1 w-52 bg-white border border-[#201e1d] z-20 py-1">
+            {CLIENT_TYPE_ORDER.map((t) => (
+              <label key={t} className="flex items-center gap-2.5 px-3 py-1.5 text-[13px] text-[#201e1d] hover:bg-[#eae9e9] cursor-pointer">
+                <input type="checkbox" checked={value.includes(t)} onChange={() => toggle(t)} className="w-3.5 h-3.5 accent-[#ec3013]" />
+                {CLIENT_TYPE_META[t].label}
+              </label>
+            ))}
+            {value.length > 0 && (
+              <button onClick={() => onChange([])} className="w-full text-left px-3 py-1.5 text-[12px] font-semibold text-[#ae1800] hover:bg-[#eae9e9] border-t border-[#d7d3d3] mt-1">Clear client types</button>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
