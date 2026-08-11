@@ -19,8 +19,8 @@ import {
 // Tailwind arbitrary utilities so no new styling approach is introduced.
 //
 // DATA NOTES (design ↔ Deadline model reconciliation):
-//  • No `fee` on the Deadline model → the Fee column renders "—" and group fee
-//    totals are omitted (no honest source).
+//  • Fee is intentionally omitted here (not needed on this page; and there's no
+//    fee field on the Deadline model / group fee totals to source).
 //  • No CRN field → client meta shows client-type (+ external_ref when present);
 //    search covers client name, obligation name and external_ref.
 //  • overdue is driven by the SQL-derived `overdue` boolean (never days_remaining).
@@ -31,7 +31,7 @@ type GroupBy = 'week' | 'assignee' | 'clienttype';
 
 const NARROW = "font-['Archivo_Narrow']";
 const BAND = 'min-w-[1218px]';
-const GRID = 'grid-cols-[40px_minmax(210px,1.7fr)_minmax(200px,1.5fr)_118px_128px_150px_156px_84px_76px]';
+const GRID = 'grid-cols-[40px_minmax(210px,1.7fr)_minmax(200px,1.5fr)_118px_128px_150px_156px_76px]';
 
 // Advance flow for the single-row status button + bulk "Advance status".
 const STATUS_FLOW: DeadlineStatus[] = ['not_started', 'in_progress', 'awaiting_client', 'ready_to_file', 'submitted'];
@@ -341,7 +341,7 @@ export function DeadlinesPage() {
         <div className={`${BAND} ${GRID} grid items-center px-7 h-[34px] bg-[#201e1d] text-[#f3f2f2] sticky top-0 z-20 ${NARROW} text-[10.5px] font-semibold uppercase tracking-[0.12em]`}>
           <div><input type="checkbox" checked={allChecked} onChange={toggleAll} className="w-3.5 h-3.5 accent-[#ec3013] cursor-pointer" /></div>
           <div>Client</div><div>Obligation</div><div>Due</div><div>Remaining</div>
-          <div>Status</div><div>Assignee</div><div className="text-right">Fee</div><div />
+          <div>Status</div><div>Assignee</div><div />
         </div>
 
         {/* Body */}
@@ -420,9 +420,6 @@ function DeadlineRow({ d, checked, onCheck, onAdvance }: { d: Deadline; checked:
         <div className="text-[13px] font-medium text-[#444141] truncate">{d.assignee_name ?? 'Unassigned'}</div>
         <div className={`mt-[3px] ${NARROW} text-[11px] uppercase tracking-[0.06em] text-[#605d5d]`}>{d.last_synced_at ? `Synced ${formatDateOnly(d.last_synced_at)}` : 'No activity'}</div>
       </div>
-
-      {/* Fee: no source on the Deadline model — kept for layout, rendered em-dash. */}
-      <div className="text-right text-[13px] font-semibold tabular-nums text-[#444141]">—</div>
 
       <div className="text-right">
         <Link to={`/clients/${d.client_id}`} className={`${NARROW} text-[11px] font-bold uppercase tracking-[0.1em] text-[#ae1800] no-underline hover:text-[#ec3013] hover:underline`}>Open</Link>
