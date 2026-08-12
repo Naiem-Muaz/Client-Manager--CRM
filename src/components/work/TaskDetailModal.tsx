@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { X, ExternalLink, Send, Clock, Check, Loader2 } from 'lucide-react';
+import { X, ExternalLink, Send, Clock, Check, Loader2, FileCheck } from 'lucide-react';
 import { Job, JobStatus, JobPriority, ChecklistStep, updateJob, useJobComments, addJobComment, logJobTime } from '../../hooks/useJobs';
 import { useTeamMembers } from '../../hooks/useTeam';
+import { CreateRequestModal } from '../documents/CreateRequestModal';
 
 export const STATUS_META: Record<JobStatus, { label: string; dot: string }> = {
   'not-started': { label: 'Not started', dot: 'bg-slate-400' },
@@ -85,6 +86,8 @@ export function TaskDetailModal({ job: initialJob, onClose, onChanged }: { job: 
     } finally { setSending(false); }
   };
 
+  const [requestDocs, setRequestDocs] = useState(false);
+
   // Time logging
   const [showTime, setShowTime] = useState(false);
   const [hours, setHours] = useState('');
@@ -125,7 +128,15 @@ export function TaskDetailModal({ job: initialJob, onClose, onChanged }: { job: 
           {/* Client */}
           <Row label="Client">
             {job.clientId
-              ? <Link to={`/clients/${job.clientId}`} onClick={close} className="text-blue-600 hover:text-blue-800 font-medium inline-flex items-center gap-1">{job.clientName || 'View'} <ExternalLink size={12} /></Link>
+              ? <div className="flex items-center gap-3 flex-wrap">
+                  <Link to={`/clients/${job.clientId}`} onClick={close} className="text-blue-600 hover:text-blue-800 font-medium inline-flex items-center gap-1">{job.clientName || 'View'} <ExternalLink size={12} /></Link>
+                  {/* Launched from the job, so the request carries jobId — the
+                      link back to this work item. Only offered when the job HAS
+                      a client: there is nobody to ask otherwise. */}
+                  <button onClick={() => setRequestDocs(true)} className="text-xs font-bold text-blue-600 hover:text-blue-800 inline-flex items-center gap-1">
+                    <FileCheck size={12} /> Request documents
+                  </button>
+                </div>
               : <span className="text-slate-400">—</span>}
           </Row>
 
@@ -226,6 +237,15 @@ export function TaskDetailModal({ job: initialJob, onClose, onChanged }: { job: 
           Created {new Date(job.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
         </div>
       </div>
+
+      {requestDocs && job.clientId && (
+        <CreateRequestModal
+          clientId={job.clientId}
+          clientName={job.clientName || undefined}
+          jobId={job.id}
+          onClose={() => setRequestDocs(false)}
+        />
+      )}
     </div>
   );
 }

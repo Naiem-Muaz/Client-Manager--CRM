@@ -10,7 +10,8 @@ import {
   History,
   Copy,
   Archive,
-  Trash2
+  Trash2,
+  FileCheck
 } from 'lucide-react';
 
 import { ClientProfileSection } from '../components/clients/ClientProfileSection';
@@ -54,6 +55,7 @@ import { entityKey, ENTITY_META } from '../lib/entityType';
 
 import { useClientDetails as useClient, archiveClient, unarchiveClient } from '../hooks/useClients';
 import { DeleteClientModal } from '../components/clients/DeleteClientModal';
+import { CreateRequestModal } from '../components/documents/CreateRequestModal';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { useEntitiesForClient } from '../hooks/useEntities';
@@ -70,6 +72,7 @@ export function ClientDetailPage() {
   const [activeTab, setActiveTab] = useState('overview');
   const [menuOpen, setMenuOpen] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
+  const [showRequestDocs, setShowRequestDocs] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -150,6 +153,12 @@ export function ClientDetailPage() {
                     <>
                         <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
                         <div className="absolute right-0 mt-1 w-52 bg-white border border-slate-200 rounded-lg shadow-lg z-20 py-1">
+                            <button
+                                onClick={() => { setMenuOpen(false); setShowRequestDocs(true); }}
+                                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                            >
+                                <FileCheck size={15} className="text-slate-400" /> Request documents…
+                            </button>
                             <button
                                 onClick={() => { setActiveTab('audit'); setMenuOpen(false); }}
                                 className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
@@ -285,6 +294,14 @@ export function ClientDetailPage() {
       {activeTab === 'deadlines' && <ClientDeadlinesTab clientId={client.id} onNavigate={setActiveTab} />}
       {activeTab === 'activity' && <ActivityFeed clientId={client.id} onOpenTab={(tab) => { if (['documents', 'deadlines', 'engagement', 'transactions', 'hmrc'].includes(tab)) setActiveTab(tab); }} />}
       
+
+      {showRequestDocs && (
+        <CreateRequestModal
+          clientId={client.id}
+          clientName={client.legalName}
+          onClose={() => setShowRequestDocs(false)}
+        />
+      )}
 
       {showDelete && (
         <DeleteClientModal

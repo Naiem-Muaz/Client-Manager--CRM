@@ -18,6 +18,7 @@ import {
   CloudUpload,
   Building2,
   Inbox as InboxIcon,
+  FileCheck,
   Zap,
   ExternalLink,
   LogOut,
@@ -43,6 +44,7 @@ export function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
     // Accountant/staff feature — the backend role-gates it; hide from client-portal users.
     ...(user?.role !== 'client' ? [
       { icon: InboxIcon, label: 'Inbox', to: '/inbox' },
+      { icon: FileCheck, label: 'Requests', to: '/requests' },
       { icon: FileSignature, label: 'Proposals', to: '/proposals' },
       { icon: Building2, label: 'Incorporations', to: '/incorporations' },
     ] : []),
