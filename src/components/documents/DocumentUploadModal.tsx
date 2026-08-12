@@ -12,7 +12,23 @@ interface Props {
     onUpload: (doc: VaultDocument) => void;
 }
 
-const MAX_SIZE_MB = 25;
+/**
+ * THE SERVER'S NUMBER, not a guess. documents.ts caps multer at 10MB, so a file
+ * between 10 and 25 passed this check, uploaded, and died as an unexplained 500
+ * — the client-side limit was inventing headroom the server does not have.
+ *
+ * ⚠️ STILL WRONG HERE, left for slice B because fixing it means changing this
+ * modal's contract and the /documents vault page calls it too:
+ *   · handleUpload fabricates a VaultDocument and hands it to onUpload — BOTH
+ *     callers discard it (`_doc` on the vault page). Removing it changes the
+ *     onUpload signature, which is a vault-page edit, and this hotfix is scoped
+ *     to the client tab.
+ *   · `status` and `taxYear` are sent as form fields the backend silently
+ *     drops. Harmless noise today; a real feature once documents have metadata.
+ *   · No `accept` filter and no MIME allowlist on the staff upload route
+ *     (survey §1.2) — the public A2 route has one, this path does not.
+ */
+const MAX_SIZE_MB = 10;
 
 export function DocumentUploadModal({ category, clientId, initialFile, onClose, onUpload }: Props) {
     const [file, setFile] = useState<File | null>(initialFile || null);
