@@ -1,8 +1,31 @@
-import React, { useState } from 'react';
-import { Upload, Search, Filter, Folder, FileText, Lock, MoreHorizontal, Download, Eye, Trash2, FileSignature, ShieldCheck, Archive, BookOpen, Receipt, Mail, UploadCloud } from 'lucide-react';
-import { VaultDocument, DocumentCategory, FOLDERS } from '../../types/DocumentTypes';
+import React, { useMemo, useState } from 'react';
+import {
+    Upload, Search, Folder, FileText, Download, Trash2, FileSignature, ShieldCheck,
+    Archive, BookOpen, Receipt, Mail, UploadCloud, Loader2, UserRound,
+} from 'lucide-react';
+import { DocumentCategory, FOLDERS } from '../../types/DocumentTypes';
 import { DocumentUploadModal } from '../documents/DocumentUploadModal';
 import { useDocuments, deleteDocument } from '../../hooks/useDocuments';
+
+/**
+ * The client Documents tab.
+ *
+ * REWRITTEN because it read a shape the API has never sent. It expected
+ * `doc.name`, `doc.size`, `doc.dateAdded`, `doc.status` and `doc.metadata.*` —
+ * a client-side VaultDocument type nothing produces. The server sends mapDoc
+ * (documents.ts:70-84): fileName / category / documentType / mimeType /
+ * fileSize / uploadedBy / uploadedAt / fileUrl.
+ *
+ * It looked healthy for as long as the list was always empty. `doc.name` is
+ * undefined, and `.toLowerCase()` on it throws — so the very first document a
+ * client could see took the tab to the error boundary. RLS deny-all was hiding
+ * the defect, not preventing it; migration 284 repaired the RLS and A2 started
+ * putting real rows in, which is what made it visible.
+ *
+ * So every read here is now a field the API actually sends, and every one of
+ * them is treated as possibly null. This tab renders a list from a server; it
+ * must not be able to crash on one.
+ */
 
 const TYPE_ICONS: Record<string, any> = {
     'Engagement': FileSignature,
@@ -11,29 +34,123 @@ const TYPE_ICONS: Record<string, any> = {
     'Accounts': BookOpen,
     'Tax': Receipt,
     'Correspondence': Mail,
-    'Client Uploads': UploadCloud
+    'Client Uploads': UploadCloud,
 };
 
+/**
+ * The API returns a DISPLAY LABEL in `category`, mapped server-side from the
+ * stored code (toUiCategory). Seven codes map to the seven FOLDERS ids below
+ * and round-trip exactly — verified against CODE_TO_UI_LABEL and the
+ * documents_category_check constraint.
+ *
+ * EIGHT DO NOT: identity, address_proof, bank_statement, invoice, receipt,
+ * contract, other and — the one that matters today — `incorporation`, which
+ * the incorporation workspace writes for real clients. Those have no entry in
+ * the server's label map, so `category` comes back as the raw snake_case code,
+ * matches no folder, and would be reachable from nowhere but "All Documents".
+ *
+ * Fixing the map is a backend change and belongs with slice B. What this tab
+ * owes them meanwhile is a HOME and a readable name, so nothing a client sent
+ * is invisible because a code was never mapped.
+ */
+const KNOWN_CATEGORIES = new Set<string>(FOLDERS.map((f) => f.id));
+const OTHER_ID = '__other__';
+
+/** 'bank_statement' → 'Bank statement'. Leaves a real label untouched. */
+function prettyCategory(raw?: string | null): string {
+    const v = (raw || '').trim();
+    if (!v) return 'Uncategorised';
+    if (KNOWN_CATEGORIES.has(v)) return v;
+    return v.replace(/[_-]+/g, ' ').replace(/^./, (c) => c.toUpperCase());
+}
+
+/** Bytes → a size a human reads. Null-safe: no size renders as nothing. */
+function fmtSize(bytes?: number | null): string {
+    if (bytes == null || Number.isNaN(Number(bytes))) return '';
+    const b = Number(bytes);
+    if (b < 1024) return `${b} B`;
+    if (b < 1024 * 1024) return `${Math.round(b / 1024)} KB`;
+    return `${(b / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function fmtDate(iso?: string | null): string {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime())
+        ? '—'
+        : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * `uploadedBy` is `uploaded_by_name || uploaded_by || 'Unknown'`, so when the
+ * join misses it holds a raw stamp. Two of those are worth reading properly:
+ * a magic-link upload is stamped `client-request:<uuid>` (A2), and an
+ * unresolved staff id comes back as a bare uuid. Neither is a person's name and
+ * neither should be printed as one.
+ */
+function uploader(raw?: string | null): { label: string; isClient: boolean } {
+    const v = (raw || '').trim();
+    if (!v || v === 'Unknown') return { label: 'Unknown', isClient: false };
+    if (v.startsWith('client-request:')) return { label: 'Client upload', isClient: true };
+    if (UUID_RE.test(v)) return { label: 'Unknown', isClient: false };
+    return { label: v, isClient: false };
+}
+
+interface ApiDocument {
+    id: string;
+    clientId?: string | null;
+    fileName?: string | null;
+    category?: string | null;
+    documentType?: string | null;
+    mimeType?: string | null;
+    fileSize?: number | null;
+    uploadedBy?: string | null;
+    uploadedAt?: string | null;
+    fileUrl?: string | null;
+}
+
 export function ClientDocumentsTab({ client }: { client: any }) {
-    const [selectedCategory, setSelectedCategory] = useState<DocumentCategory | 'All'>('All');
+    const [selectedCategory, setSelectedCategory] = useState<DocumentCategory | 'All' | typeof OTHER_ID>('All');
     const [searchQuery, setSearchQuery] = useState('');
     const [showUpload, setShowUpload] = useState(false);
-    
-    // Live API hook context mapping dynamically against active Client ID
-    const { documents, isLoading, mutate } = useDocuments(client.id);
+    const [deletingId, setDeletingId] = useState<string | null>(null);
 
-    const safeDocuments = Array.isArray(documents) ? documents : [];
+    const { documents, isLoading, mutate } = useDocuments(client?.id);
 
-    const filteredDocs = safeDocuments.filter((doc: any) => {
-        const matchesCategory = selectedCategory === 'All' || doc.category === selectedCategory;
-        const matchesSearch = doc.name.toLowerCase().includes(searchQuery.toLowerCase());
-        return matchesCategory && matchesSearch;
-    });
+    // The API may hand back an object on error; only an array is a list.
+    const safeDocuments: ApiDocument[] = Array.isArray(documents) ? documents : [];
 
-    const handleUpload = (newDoc: VaultDocument) => {
-        // Optimistic refresh - actual backend update occurs via SWR
-        mutate(undefined);
-        setShowUpload(false);
+    const inFolder = (doc: ApiDocument, folder: string) =>
+        folder === OTHER_ID
+            ? !KNOWN_CATEGORIES.has((doc.category || '').trim())
+            : (doc.category || '') === folder;
+
+    const filteredDocs = useMemo(() => {
+        const q = searchQuery.trim().toLowerCase();
+        return safeDocuments.filter((doc) => {
+            const matchesCategory = selectedCategory === 'All' || inFolder(doc, selectedCategory);
+            // Null-safe: a row with no fileName must not throw, and must not
+            // vanish from an empty search either.
+            const matchesSearch = !q || (doc.fileName || '').toLowerCase().includes(q);
+            return matchesCategory && matchesSearch;
+        });
+    }, [safeDocuments, selectedCategory, searchQuery]);
+
+    const unmappedCount = safeDocuments.filter((d) => inFolder(d, OTHER_ID)).length;
+
+    const currentLabel =
+        selectedCategory === 'All' ? 'All Documents'
+        : selectedCategory === OTHER_ID ? 'Other'
+        : FOLDERS.find((f) => f.id === selectedCategory)?.label || 'Documents';
+
+    const handleDelete = async (doc: ApiDocument) => {
+        if (!window.confirm(`Delete "${doc.fileName || 'this document'}"? This cannot be undone.`)) return;
+        setDeletingId(doc.id);
+        try { await deleteDocument(doc.id, client.id); }
+        catch { window.alert('Could not delete that document. Please try again.'); }
+        finally { setDeletingId(null); }
     };
 
     return (
@@ -45,29 +162,30 @@ export function ClientDocumentsTab({ client }: { client: any }) {
                     <p className="text-xs text-slate-500">Central File Storage</p>
                 </div>
                 <div className="flex-1 overflow-y-auto p-2 space-y-1">
-                    <button 
+                    <button
                         onClick={() => setSelectedCategory('All')}
-                        className={`w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
-                            selectedCategory === 'All' 
-                            ? 'bg-blue-50 text-blue-700' 
-                            : 'text-slate-600 hover:bg-slate-50'
+                        className={`w-full flex items-center justify-between px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                            selectedCategory === 'All' ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'
                         }`}
                     >
-                        <Folder size={18} className={selectedCategory === 'All' ? 'text-blue-500' : 'text-slate-400'} />
-                        All Documents
+                        <div className="flex items-center gap-3">
+                            <Folder size={18} className={selectedCategory === 'All' ? 'text-blue-500' : 'text-slate-400'} />
+                            All Documents
+                        </div>
+                        {safeDocuments.length > 0 && (
+                            <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">{safeDocuments.length}</span>
+                        )}
                     </button>
                     <div className="h-px bg-slate-100 my-2 mx-1" />
                     {FOLDERS.map(folder => {
                         const Icon = TYPE_ICONS[folder.id] || Folder;
-                        const count = safeDocuments.filter((d: any) => d.category === folder.id).length;
+                        const count = safeDocuments.filter((d) => inFolder(d, folder.id)).length;
                         return (
-                            <button 
+                            <button
                                 key={folder.id}
                                 onClick={() => setSelectedCategory(folder.id)}
                                 className={`w-full flex items-center justify-between px-3 py-2 text-sm font-medium rounded-lg transition-colors group ${
-                                    selectedCategory === folder.id 
-                                    ? 'bg-blue-50 text-blue-700' 
-                                    : 'text-slate-600 hover:bg-slate-50'
+                                    selectedCategory === folder.id ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'
                                 }`}
                             >
                                 <div className="flex items-center gap-3">
@@ -80,9 +198,26 @@ export function ClientDocumentsTab({ client }: { client: any }) {
                             </button>
                         );
                     })}
+                    {/* Only shown when it holds something — an always-present
+                        "Other" folder that is always empty is just noise. */}
+                    {unmappedCount > 0 && (
+                        <button
+                            onClick={() => setSelectedCategory(OTHER_ID)}
+                            className={`w-full flex items-center justify-between px-3 py-2 text-sm font-medium rounded-lg transition-colors group ${
+                                selectedCategory === OTHER_ID ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'
+                            }`}
+                            title="Documents whose category has no folder yet — incorporation packs, ID, bank statements and so on"
+                        >
+                            <div className="flex items-center gap-3">
+                                <Folder size={18} className={selectedCategory === OTHER_ID ? 'text-blue-500' : 'text-slate-400 group-hover:text-slate-500'} />
+                                Other
+                            </div>
+                            <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">{unmappedCount}</span>
+                        </button>
+                    )}
                 </div>
                 <div className="p-3 border-t border-slate-100">
-                    <button 
+                    <button
                         onClick={() => setShowUpload(true)}
                         className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors shadow-sm font-medium text-sm"
                     >
@@ -93,17 +228,16 @@ export function ClientDocumentsTab({ client }: { client: any }) {
 
             {/* Main Content: File List */}
             <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
-                {/* Toolbar */}
                 <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50/50">
                     <div className="flex items-center gap-2 text-sm text-slate-500">
-                         <span className="font-medium text-slate-800">{selectedCategory === 'All' ? 'All Documents' : FOLDERS.find(f => f.id === selectedCategory)?.label}</span>
-                         <span>•</span>
-                         <span>{filteredDocs.length} files</span>
+                        <span className="font-medium text-slate-800">{currentLabel}</span>
+                        <span>•</span>
+                        <span>{filteredDocs.length} file{filteredDocs.length === 1 ? '' : 's'}</span>
                     </div>
                     <div className="relative w-64">
-                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                         <input 
-                            type="text" 
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                        <input
+                            type="text"
                             placeholder="Search files..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
@@ -112,18 +246,23 @@ export function ClientDocumentsTab({ client }: { client: any }) {
                     </div>
                 </div>
 
-                {/* Table Header */}
+                {/* Header columns match what the API actually sends. The old
+                    Status and Tags columns were reading fields that do not
+                    exist on any document row. */}
                 <div className="grid grid-cols-12 gap-4 px-6 py-3 bg-slate-50 text-xs font-semibold text-slate-500 border-b border-slate-200 uppercase tracking-wide">
-                    <div className="col-span-12 md:col-span-5">Name</div>
-                    <div className="col-span-2">Date</div>
-                    <div className="col-span-2">Status</div>
-                    <div className="col-span-2">Tags</div>
+                    <div className="col-span-5">Name</div>
+                    <div className="col-span-2">Category</div>
+                    <div className="col-span-2">Uploaded</div>
+                    <div className="col-span-2">By</div>
                     <div className="col-span-1 text-right">Action</div>
                 </div>
 
-                {/* List */}
                 <div className="flex-1 overflow-y-auto">
-                    {filteredDocs.length === 0 ? (
+                    {isLoading ? (
+                        <div className="flex items-center justify-center h-full text-slate-400 text-sm gap-2">
+                            <Loader2 className="animate-spin" size={16} /> Loading documents…
+                        </div>
+                    ) : filteredDocs.length === 0 ? (
                         <div className="flex flex-col items-center justify-center h-full text-slate-400">
                             <Folder size={48} className="mb-4 opacity-50" />
                             <p className="font-medium text-slate-600">No documents found</p>
@@ -131,75 +270,87 @@ export function ClientDocumentsTab({ client }: { client: any }) {
                         </div>
                     ) : (
                         <div className="divide-y divide-slate-100">
-                            {filteredDocs.map(doc => (
-                                <div key={doc.id} className="grid grid-cols-12 gap-4 px-6 py-4 items-center hover:bg-slate-50 transition-colors group">
-                                    <div className="col-span-12 md:col-span-5 flex items-center gap-3 overflow-hidden">
-                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-                                            doc.metadata.isImmutable ? 'bg-amber-50 text-amber-600' : 'bg-blue-50 text-blue-600'
-                                        }`}>
-                                            {doc.metadata.isImmutable ? <Lock size={14} /> : <FileText size={14} />}
-                                        </div>
-                                        <div className="min-w-0">
-                                            <div className="font-medium text-slate-900 truncate" title={doc.name}>{doc.name}</div>
-                                            <div className="text-xs text-slate-500 flex gap-1">
-                                                <span>{doc.size}</span>
-                                                <span>•</span>
-                                                <span>Added by {doc.uploadedBy}</span>
+                            {filteredDocs.map(doc => {
+                                const who = uploader(doc.uploadedBy);
+                                const size = fmtSize(doc.fileSize);
+                                return (
+                                    <div key={doc.id} className="grid grid-cols-12 gap-4 px-6 py-4 items-center hover:bg-slate-50 transition-colors group">
+                                        <div className="col-span-5 flex items-center gap-3 overflow-hidden">
+                                            <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-blue-50 text-blue-600">
+                                                <FileText size={14} />
+                                            </div>
+                                            <div className="min-w-0">
+                                                <div className="font-medium text-slate-900 truncate" title={doc.fileName || undefined}>
+                                                    {doc.fileName || 'Untitled document'}
+                                                </div>
+                                                {size && <div className="text-xs text-slate-500">{size}</div>}
                                             </div>
                                         </div>
-                                    </div>
-                                    
-                                    <div className="col-span-2 text-sm text-slate-600">{doc.dateAdded}</div>
-                                    
-                                    <div className="col-span-2">
-                                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold border ${
-                                            doc.status === 'Signed' || doc.status === 'Final' 
-                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
-                                            : 'bg-slate-100 text-slate-600 border-slate-200'
-                                        }`}>
-                                            {doc.status}
-                                        </span>
-                                    </div>
-                                    
-                                    <div className="col-span-2 flex flex-wrap gap-1">
-                                        {doc.metadata.taxYear && (
-                                            <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-700 rounded text-[10px] font-bold border border-indigo-100 truncate">
-                                                {doc.metadata.taxYear}
+
+                                        <div className="col-span-2">
+                                            <span className="inline-block px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[11px] border border-slate-200 truncate max-w-full"
+                                                title={doc.documentType || undefined}>
+                                                {prettyCategory(doc.category)}
                                             </span>
-                                        )}
-                                        {selectedCategory === 'All' && (
-                                            <span className="px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] border border-slate-200 truncate">
-                                                {doc.category}
-                                            </span>
-                                        )}
-                                    </div>
-                                    
-                                    <div className="col-span-1 flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button className="p-1.5 hover:bg-blue-100 text-slate-400 hover:text-blue-600 rounded-lg transition-colors" title="Download">
-                                            <Download size={16} />
-                                        </button>
-                                        {!(doc.metadata?.isImmutable || false) && (
-                                            <button 
-                                                onClick={async () => {
-                                                    await deleteDocument(doc.id, client.id);
-                                                }}
-                                                className="p-1.5 hover:bg-red-100 text-slate-400 hover:text-red-600 rounded-lg transition-colors" title="Delete">
-                                                <Trash2 size={16} />
+                                        </div>
+
+                                        <div className="col-span-2 text-sm text-slate-600">{fmtDate(doc.uploadedAt)}</div>
+
+                                        <div className="col-span-2 text-sm text-slate-600 truncate">
+                                            {who.isClient ? (
+                                                <span
+                                                    className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-full text-[11px] font-bold border border-emerald-100"
+                                                    title={`Uploaded by the client through a document-request link (${doc.uploadedBy})`}
+                                                >
+                                                    <UserRound size={10} /> Client upload
+                                                </span>
+                                            ) : (
+                                                <span title={who.label}>{who.label}</span>
+                                            )}
+                                        </div>
+
+                                        <div className="col-span-1 flex justify-end gap-2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                                            {/* fileUrl is a freshly-signed, short-lived URL from the
+                                                list response (the NextGen DocumentsTab pattern).
+                                                Null means signing failed — disabled, not a dead
+                                                button that looks live. */}
+                                            {doc.fileUrl ? (
+                                                <a
+                                                    href={doc.fileUrl}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="p-1.5 hover:bg-blue-100 text-slate-400 hover:text-blue-600 rounded-lg transition-colors"
+                                                    title={`Download ${doc.fileName || 'file'}`}
+                                                >
+                                                    <Download size={16} />
+                                                </a>
+                                            ) : (
+                                                <span className="p-1.5 text-slate-200 cursor-not-allowed" title="Download unavailable">
+                                                    <Download size={16} />
+                                                </span>
+                                            )}
+                                            <button
+                                                onClick={() => handleDelete(doc)}
+                                                disabled={deletingId === doc.id}
+                                                className="p-1.5 hover:bg-red-100 text-slate-400 hover:text-red-600 rounded-lg transition-colors disabled:opacity-40"
+                                                title="Delete"
+                                            >
+                                                {deletingId === doc.id ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
                                             </button>
-                                        )}
+                                        </div>
                                     </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     )}
                 </div>
             </div>
 
             {showUpload && <DocumentUploadModal
-                category={selectedCategory !== 'All' ? selectedCategory : undefined}
+                category={selectedCategory !== 'All' && selectedCategory !== OTHER_ID ? selectedCategory : undefined}
                 clientId={client.id}
                 onClose={() => setShowUpload(false)}
-                onUpload={handleUpload}
+                onUpload={() => { mutate(undefined); setShowUpload(false); }}
             />}
         </div>
     );
