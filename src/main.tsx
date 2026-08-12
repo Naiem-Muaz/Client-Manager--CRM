@@ -26,6 +26,7 @@ import { IncorporationsPage } from "./pages/IncorporationsPage";
 import { IncorporationWizardPage } from "./pages/IncorporationWizardPage";
 import { SigningPage } from "./pages/SigningPage";
 import { ProposalPage } from "./pages/ProposalPage";
+import { RequestPage } from "./pages/RequestPage";
 import { ProposalsPage } from "./pages/ProposalsPage";
 import { ProposalBuilderPage, NewProposalPage } from "./pages/ProposalBuilderPage";
 import { LoginPage } from "./pages/LoginPage";
@@ -72,6 +73,7 @@ function App() {
           <Route path="/accept-invite" element={<AcceptInvitePage />} />
           <Route path="/sign/:token" element={<SigningPage />} />
           <Route path="/proposal/:token" element={<ProposalPage />} />
+          <Route path="/request/:token" element={<RequestPage />} />
           <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/clients" element={<ClientListPage />} />
