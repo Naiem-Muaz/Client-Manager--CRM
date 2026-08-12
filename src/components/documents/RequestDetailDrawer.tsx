@@ -32,6 +32,34 @@ const EVENT_LABEL: Record<string, string> = {
   chase_send_failed: 'Chase email failed',
 };
 
+const MAX_CHASES = 3;   // matches CHASE_OFFSETS_DAYS on the server
+
+/**
+ * One line describing where auto-chasing actually stands. The toggle says what
+ * the SETTING is; staff need to know what has HAPPENED — "we've emailed them
+ * twice already" is what decides whether you pick up the phone.
+ *
+ * `nextChaseAt` null with chasing on and chases already sent means the cadence
+ * finished. Null with none sent means the cron stopped it — which today only
+ * happens when the client has no email address, and that has its own banner
+ * above, so this stays deliberately vague rather than guessing the reason.
+ */
+function chaseState(r: { status: string; chaseEnabled: boolean; chaseCount: number; nextChaseAt: string | null }): string {
+  const sent = r.chaseCount > 0 ? `Chased ${r.chaseCount}×` : 'Not chased yet';
+  if (r.status !== 'sent') return `${sent} · chasing has stopped`;
+  if (!r.chaseEnabled) return `${sent} · chasing off for this request`;
+  if (r.nextChaseAt) {
+    const d = new Date(r.nextChaseAt);
+    const when = Number.isNaN(d.getTime())
+      ? ''
+      : ` · next ${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
+    return `${sent}${when}`;
+  }
+  return r.chaseCount >= MAX_CHASES
+    ? `Chasing finished (${r.chaseCount} sent)`
+    : `${sent} · no further chases scheduled`;
+}
+
 const ITEM_CHIP: Record<RequestItem['status'], { cls: string; icon: React.ReactNode; label: string }> = {
   pending:   { cls: 'bg-slate-100 text-slate-600', icon: <Clock size={11} />, label: 'Waiting' },
   fulfilled: { cls: 'bg-emerald-100 text-emerald-700', icon: <CheckCircle2 size={11} />, label: 'Received' },
@@ -223,6 +251,9 @@ export function RequestDetailDrawer({ id, onClose }: { id: string; onClose: () =
                 </button>
               </div>
             </div>
+            {/* What the cron has actually done, and what it will do next. A
+                toggle alone says the setting; this says the state. */}
+            <div className="text-xs text-slate-500 -mt-2">{chaseState(request)}</div>
             {request.email && <div className="text-xs text-slate-400 inline-flex items-center gap-1"><Mail size={12} /> {request.email}</div>}
 
             {/* ── events ── */}

@@ -18,6 +18,8 @@ export interface FirmSettings {
   default_vat_rate?: number | string | null;
   proposal_intro_template?: string | null;
   proposal_scope_template?: string | null;
+  /** Firm opt-in for document-request auto-chase emails (migration 284). */
+  document_chase_enabled?: boolean;
 }
 
 const fetcher = (url: string) => NextGenAPI.get(url).then(r => r.data.data ?? r.data);

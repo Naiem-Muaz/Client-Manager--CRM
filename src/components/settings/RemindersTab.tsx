@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { Bell, Loader2, Check, AlertTriangle } from 'lucide-react';
+import { Bell, Loader2, Check, AlertTriangle, FileCheck, Send } from 'lucide-react';
 import { useReminderSettings, setRemindersEnabled, setTypeOffsets, ReminderTypeSetting } from '../../hooks/useReminders';
+import { useFirmSettings, updateFirmSettings } from '../../hooks/useFirmSettings';
+import { errMsg } from '../../lib/errMsg';
 
 /**
  * Practice Settings → Reminders: the firm-level on/off (opt-in, default OFF) and
@@ -39,6 +41,8 @@ export function RemindersTab() {
           <AlertTriangle size={16} className="mt-0.5 shrink-0" /><span>Reminders are off. Turn them on once you've reviewed the templates and your clients' contact emails are up to date.</span>
         </div>
       )}
+
+      <DocumentChaseCard />
 
       {/* Per-type offset editor */}
       <div>
@@ -80,6 +84,69 @@ function OffsetRow({ type }: { type: ReminderTypeSetting }) {
         className="text-xs font-bold text-blue-600 hover:text-blue-800 disabled:text-slate-300 inline-flex items-center gap-1 w-16 justify-end">
         {saving ? <Loader2 size={13} className="animate-spin" /> : saved ? <><Check size={13} /> Saved</> : dirty ? 'Save' : ''}
       </button>
+    </div>
+  );
+}
+
+/**
+ * Document-request auto-chase — the firm opt-in for the 08:00 UTC cron.
+ *
+ * It lives on THIS tab, beside deadline reminders, because the two are the same
+ * question to a practice owner: "what do we email clients automatically?" But
+ * the copy has to keep them apart, because they are NOT the same promise —
+ * deadline reminders build a queue a human approves, and this one SENDS. A
+ * toggle that read like its neighbour would be the most expensive kind of
+ * ambiguity, so the difference is the first thing the card says.
+ */
+function DocumentChaseCard() {
+  const { firm, isLoading, mutate } = useFirmSettings();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const on = !!firm?.document_chase_enabled;
+
+  const toggle = async () => {
+    setSaving(true); setError(null);
+    try {
+      await updateFirmSettings({ document_chase_enabled: !on });
+      await mutate();
+    } catch (e) { setError(errMsg(e, 'Could not change that setting.')); }
+    finally { setSaving(false); }
+  };
+
+  if (isLoading || !firm) return null;
+
+  return (
+    <div className="pt-2">
+      <div className="flex items-center gap-3 mb-3">
+        <FileCheck className="text-blue-600" size={20} />
+        <h3 className="text-lg font-semibold text-slate-900">Document Request Chasing</h3>
+      </div>
+
+      <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl p-4">
+        <div className="pr-4">
+          <div className="font-medium text-slate-900">Chase clients automatically</div>
+          <div className="text-sm text-slate-500">
+            When on, clients with outstanding document requests are emailed a reminder
+            <strong> 3, 7 and 14 days</strong> after the request was sent, then never again.
+            {/* Said plainly, because it is the difference from the setting above. */}
+            <span className="text-slate-700"> Unlike deadline reminders, these send without review.</span>
+            {' '}Chasing stops as soon as a request is complete, cancelled, or turned off on the request itself.
+          </div>
+        </div>
+        <button role="switch" aria-checked={on} onClick={toggle} disabled={saving}
+          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors shrink-0 ${on ? 'bg-blue-600' : 'bg-slate-300'} disabled:opacity-50`}>
+          <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${on ? 'translate-x-6' : 'translate-x-1'}`} />
+        </button>
+      </div>
+
+      {error && <div className="mt-2 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">{error}</div>}
+
+      {on && (
+        <div className="mt-2 text-sm text-blue-800 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 flex items-start gap-2">
+          <Send size={16} className="mt-0.5 shrink-0" />
+          <span>Chase emails are going out automatically. Turn chasing off for a single client from that request's drawer.</span>
+        </div>
+      )}
     </div>
   );
 }
