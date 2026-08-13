@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FileCheck, Loader2, AlertTriangle, CheckCircle2, Clock, MailX, Bell } from 'lucide-react';
+import { FileCheck, Loader2, AlertTriangle, CheckCircle2, Clock, MailX, Bell, PenLine } from 'lucide-react';
 import {
   useDocumentRequests, RequestTab, REQUEST_TABS, TAB_LABEL, RequestRow,
 } from '../hooks/useDocumentRequests';
 import { RequestDetailDrawer } from '../components/documents/RequestDetailDrawer';
+import { SignatureQueue } from '../components/documents/SignatureQueue';
 
 /**
  * The document-request queue — the ReminderQueuePage shell (tabs with counts in
@@ -41,6 +42,11 @@ export function RequestsPage() {
   const [tab, setTab] = useState<RequestTab>('open');
   const { requests, counts, isLoading } = useDocumentRequests(tab);
   const [openId, setOpenId] = useState<string | null>(null);
+  // Two subjects, one page. A segmented switch rather than a second route:
+  // "what have we asked clients for" is one job, whether it is files or a
+  // signature.
+  const [section, setSection] = useState<'documents' | 'signatures'>('documents');
+  const [openSigId, setOpenSigId] = useState<string | null>(null);
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -52,6 +58,21 @@ export function RequestsPage() {
         What you've asked clients for, and what has come back. Clients upload through a secure
         link — no login, no password.
       </p>
+
+      <div className="flex bg-slate-100 p-1 rounded-lg w-fit text-sm font-semibold mb-5">
+        <button onClick={() => setSection('documents')}
+          className={`px-4 py-1.5 rounded inline-flex items-center gap-1.5 ${section === 'documents' ? 'bg-white text-slate-900 shadow' : 'text-slate-500'}`}>
+          <FileCheck size={14} /> Documents
+        </button>
+        <button onClick={() => setSection('signatures')}
+          className={`px-4 py-1.5 rounded inline-flex items-center gap-1.5 ${section === 'signatures' ? 'bg-white text-slate-900 shadow' : 'text-slate-500'}`}>
+          <PenLine size={14} /> Signatures
+        </button>
+      </div>
+
+      {section === 'signatures' ? (
+        <SignatureQueue openId={openSigId} setOpenId={setOpenSigId} />
+      ) : (<>
 
       {/* Stat tiles — the two that mean "someone has to do something". */}
       <div className="flex flex-wrap gap-3 mb-5">
@@ -92,6 +113,8 @@ export function RequestsPage() {
           {requests.map((r) => <RequestRowItem key={r.id} r={r} onOpen={() => setOpenId(r.id)} />)}
         </div>
       )}
+
+      </>)}
 
       {openId && <RequestDetailDrawer id={openId} onClose={() => setOpenId(null)} />}
     </div>

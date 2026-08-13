@@ -1,11 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import {
     Upload, Search, Folder, FileText, Download, Trash2, FileSignature, ShieldCheck,
-    Archive, BookOpen, Receipt, Mail, UploadCloud, Loader2, UserRound,
+    Archive, BookOpen, Receipt, Mail, UploadCloud, Loader2, UserRound, PenLine,
 } from 'lucide-react';
 import { DocumentCategory, FOLDERS } from '../../types/DocumentTypes';
 import { DocumentUploadModal } from '../documents/DocumentUploadModal';
 import { useDocuments, deleteDocument } from '../../hooks/useDocuments';
+import { RequestSignatureModal } from '../documents/RequestSignatureModal';
 
 /**
  * The client Documents tab.
@@ -116,6 +117,9 @@ export function ClientDocumentsTab({ client }: { client: any }) {
     const [searchQuery, setSearchQuery] = useState('');
     const [showUpload, setShowUpload] = useState(false);
     const [deletingId, setDeletingId] = useState<string | null>(null);
+    // Only a PDF can be signed — the API refuses anything else, so the action
+    // is offered only where it can succeed.
+    const [signDoc, setSignDoc] = useState<ApiDocument | null>(null);
 
     const { documents, isLoading, mutate } = useDocuments(client?.id);
 
@@ -314,6 +318,15 @@ export function ClientDocumentsTab({ client }: { client: any }) {
                                                 list response (the NextGen DocumentsTab pattern).
                                                 Null means signing failed — disabled, not a dead
                                                 button that looks live. */}
+                                            {String(doc.mimeType || '').toLowerCase() === 'application/pdf' && (
+                                                <button
+                                                    onClick={() => setSignDoc(doc)}
+                                                    className="p-1.5 hover:bg-violet-100 text-slate-400 hover:text-violet-600 rounded-lg transition-colors"
+                                                    title="Request signature"
+                                                >
+                                                    <PenLine size={16} />
+                                                </button>
+                                            )}
                                             {doc.fileUrl ? (
                                                 <a
                                                     href={doc.fileUrl}
@@ -345,6 +358,16 @@ export function ClientDocumentsTab({ client }: { client: any }) {
                     )}
                 </div>
             </div>
+
+            {signDoc && (
+                <RequestSignatureModal
+                    clientId={client.id}
+                    clientName={client.legalName || client.name}
+                    document={{ id: signDoc.id, fileName: signDoc.fileName || 'document.pdf' }}
+                    onClose={() => setSignDoc(null)}
+                    onDone={() => { setSignDoc(null); mutate(undefined); }}
+                />
+            )}
 
             {showUpload && <DocumentUploadModal
                 category={selectedCategory !== 'All' && selectedCategory !== OTHER_ID ? selectedCategory : undefined}

@@ -1,6 +1,6 @@
 import {
   StickyNote, FileText, FileSignature, MessageSquare, UserPlus, ShieldCheck,
-  CalendarClock, Briefcase, Building2, Handshake, Archive, Activity, Mail, FileCheck,
+  CalendarClock, Briefcase, Building2, Handshake, Archive, Activity, Mail, FileCheck, PenLine,
 } from 'lucide-react';
 
 // Visual + label metadata per timeline entry type — one map, used by the feed and
@@ -28,12 +28,15 @@ export const TIMELINE_META: Record<string, TimelineTypeMeta> = {
   // Document requests (slice A). 'sent' and 'completed' only — see the arm's
   // comment in clientTimeline.ts for why chases stay out of the feed.
   document_request:  { label: 'Document requests', icon: FileCheck, color: 'bg-blue-100 text-blue-700' },
+  // Signature requests (slice C). sent / signed / declined only — chases and
+  // views stay in the request's own drawer.
+  document_signature:{ label: 'Signatures',        icon: PenLine,   color: 'bg-violet-100 text-violet-700' },
 };
 
 export const timelineMeta = (type: string): TimelineTypeMeta => TIMELINE_META[type] || { label: type, icon: Activity, color: 'bg-slate-100 text-slate-500' };
 
 // Order for the filter chips.
-export const TIMELINE_FILTER_ORDER = ['note', 'document', 'document_request', 'deadline', 'communication', 'triage_email', 'engagement', 'job', 'proposal', 'incorporation', 'assignment', 'compliance', 'lifecycle'] as const;
+export const TIMELINE_FILTER_ORDER = ['note', 'document', 'document_request', 'document_signature', 'deadline', 'communication', 'triage_email', 'engagement', 'job', 'proposal', 'incorporation', 'assignment', 'compliance', 'lifecycle'] as const;
 
 /** 'YYYY-…' ISO → "3d ago" / date. */
 export function relativeTime(iso: string): string {
