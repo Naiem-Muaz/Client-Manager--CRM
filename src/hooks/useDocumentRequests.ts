@@ -126,7 +126,7 @@ export async function regenerateRequestLink(id: string): Promise<RequestDetail> 
 }
 
 export async function updateDocumentRequest(id: string, patch: {
-  cancel?: boolean; chaseEnabled?: boolean; dueDate?: string | null;
+  cancel?: boolean; chaseEnabled?: boolean; dueDate?: string | null; resumeChase?: boolean;
 }): Promise<RequestDetail> {
   const r = await NextGenAPI.patch(`${BASE}/${id}`, patch);
   await refreshAll();
@@ -135,6 +135,21 @@ export async function updateDocumentRequest(id: string, patch: {
 
 export async function waiveRequestItem(id: string, itemId: string): Promise<RequestDetail> {
   const r = await NextGenAPI.post(`${BASE}/${id}/items/${itemId}/waive`);
+  await refreshAll();
+  return r.data.data;
+}
+
+/**
+ * Add a primary-contact email for a client, then revalidate every request view.
+ *
+ * The prefix revalidation is the point: nothing about this call writes to
+ * document_requests, so the ONLY way the unblocked request leaves the no_email
+ * tab is a re-read — the tab recomputes the address in SQL rather than reading
+ * a stored flag. Mutating just the detail key would leave the queue showing a
+ * problem that is already solved.
+ */
+export async function addPrimaryContactEmail(clientId: string, email: string): Promise<{ email: string | null; clientName: string | null; remindersUnblocked: number }> {
+  const r = await NextGenAPI.post(`/brain/clients/${clientId}/primary-contact-email`, { email });
   await refreshAll();
   return r.data.data;
 }

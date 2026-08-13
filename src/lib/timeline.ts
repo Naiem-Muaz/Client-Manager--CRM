@@ -1,6 +1,6 @@
 import {
   StickyNote, FileText, FileSignature, MessageSquare, UserPlus, ShieldCheck,
-  CalendarClock, Briefcase, Building2, Handshake, Archive, Activity,
+  CalendarClock, Briefcase, Building2, Handshake, Archive, Activity, Mail, FileCheck,
 } from 'lucide-react';
 
 // Visual + label metadata per timeline entry type — one map, used by the feed and
@@ -19,12 +19,21 @@ export const TIMELINE_META: Record<string, TimelineTypeMeta> = {
   incorporation: { label: 'Incorporations', icon: Building2,      color: 'bg-cyan-100 text-cyan-600' },
   proposal:      { label: 'Proposals',      icon: Handshake,      color: 'bg-teal-100 text-teal-600', crossPage: true },
   lifecycle:     { label: 'Lifecycle',      icon: Archive,        color: 'bg-slate-200 text-slate-600' },
+  // BACKFILLED: the backend has emitted this arm since Shared Triage shipped and
+  // this map never learned about it, so inbox emails fell through to the generic
+  // fallback below — label 'triage_email', a stopwatch icon, and NO filter chip,
+  // which made them unfilterable rather than merely plain. Survey §5 flagged it;
+  // fixing it here is the fix-forward that item owed.
+  triage_email:      { label: 'Inbox emails',      icon: Mail,      color: 'bg-sky-100 text-sky-600' },
+  // Document requests (slice A). 'sent' and 'completed' only — see the arm's
+  // comment in clientTimeline.ts for why chases stay out of the feed.
+  document_request:  { label: 'Document requests', icon: FileCheck, color: 'bg-blue-100 text-blue-700' },
 };
 
 export const timelineMeta = (type: string): TimelineTypeMeta => TIMELINE_META[type] || { label: type, icon: Activity, color: 'bg-slate-100 text-slate-500' };
 
 // Order for the filter chips.
-export const TIMELINE_FILTER_ORDER = ['note', 'document', 'deadline', 'communication', 'engagement', 'job', 'proposal', 'incorporation', 'assignment', 'compliance', 'lifecycle'] as const;
+export const TIMELINE_FILTER_ORDER = ['note', 'document', 'document_request', 'deadline', 'communication', 'triage_email', 'engagement', 'job', 'proposal', 'incorporation', 'assignment', 'compliance', 'lifecycle'] as const;
 
 /** 'YYYY-…' ISO → "3d ago" / date. */
 export function relativeTime(iso: string): string {

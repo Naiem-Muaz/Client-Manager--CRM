@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import {
   useDocumentRequest, regenerateRequestLink, updateDocumentRequest, waiveRequestItem,
-  RequestDetail, RequestItem,
+  addPrimaryContactEmail, RequestDetail, RequestItem,
 } from '../../hooks/useDocumentRequests';
 import { errMsg } from '../../lib/errMsg';
 
@@ -33,6 +33,7 @@ const EVENT_LABEL: Record<string, string> = {
 };
 
 const MAX_CHASES = 3;   // matches CHASE_OFFSETS_DAYS on the server
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;   // same shape the route validates
 
 /**
  * One line describing where auto-chasing actually stands. The toggle says what
@@ -73,6 +74,7 @@ export function RequestDetailDrawer({ id, onClose }: { id: string; onClose: () =
   const [freshUrl, setFreshUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [confirm, setConfirm] = useState<'cancel' | 'regenerate' | null>(null);
+  const [newEmail, setNewEmail] = useState('');
 
   const run = async (key: string, fn: () => Promise<RequestDetail>) => {
     setBusy(key); setError(null);
@@ -89,6 +91,15 @@ export function RequestDetailDrawer({ id, onClose }: { id: string; onClose: () =
   const doChase = (on: boolean) => run('chase', () => updateDocumentRequest(id, { chaseEnabled: on }));
   const doDue = (d: string) => run('due', () => updateDocumentRequest(id, { dueDate: d || null }));
   const doWaive = (itemId: string) => run(`waive-${itemId}`, () => waiveRequestItem(id, itemId));
+  const doResume = () => run('resume', () => updateDocumentRequest(id, { resumeChase: true }));
+  const doAddEmail = async () => {
+    const v = newEmail.trim();
+    if (!EMAIL_RE.test(v)) return;
+    setBusy('email'); setError(null);
+    try { await addPrimaryContactEmail(request!.clientId, v); setNewEmail(''); }
+    catch (e) { setError(errMsg(e, 'Could not add that email.')); }
+    finally { setBusy(null); }
+  };
 
   const copy = async (url: string) => {
     try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000); }
@@ -96,6 +107,11 @@ export function RequestDetailDrawer({ id, onClose }: { id: string; onClose: () =
   };
 
   const live = request?.status === 'sent';
+  // Resume is offered exactly when the server would accept it — sent, cursor
+  // cleared, and chases still left. Rendering it otherwise would put a button
+  // on screen whose only outcome is a 400.
+  const canResume = !!request && request.status === 'sent'
+    && !request.nextChaseAt && request.chaseCount < MAX_CHASES;
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -124,27 +140,53 @@ export function RequestDetailDrawer({ id, onClose }: { id: string; onClose: () =
           <div className="flex-1 overflow-y-auto p-5 space-y-5">
             {error && <div className="bg-rose-50 border border-rose-200 text-rose-700 text-sm rounded-lg px-3 py-2">{error}</div>}
 
-            {/* ── no-email banner ──────────────────────────────────────────
-                The reminders queue unblocks inline because its endpoint takes
-                a reminder id. There is no client-scoped equivalent on this API,
-                so this deep-links to the client instead of pretending to fix it
-                here. Copying the link is the immediate way through. */}
+            {/* A5: the reminders queue's "Add & unblock", inline at last — A3
+                could only deep-link because no client-scoped route existed. */}
             {live && !request.email && (
               <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
                 <div className="flex items-start gap-2.5">
                   <AlertTriangle size={16} className="text-amber-600 mt-0.5 shrink-0" />
-                  <div className="text-sm text-amber-800">
+                  <div className="text-sm text-amber-800 min-w-0 flex-1">
                     <strong>No email address for this client.</strong> The request is live and the link
                     works — it just hasn't been emailed to anyone.
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <Link to={`/clients/${request.clientId}`}
-                        className="text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 px-2.5 py-1 rounded inline-flex items-center gap-1">
-                        <Mail size={11} /> Add a primary contact
-                      </Link>
-                      <span className="text-xs text-amber-700">then regenerate the link and send it, or copy it below.</span>
+                    <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+                      <Mail size={14} className="text-amber-600 shrink-0" />
+                      <input
+                        value={newEmail} onChange={(e) => setNewEmail(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') doAddEmail(); }}
+                        placeholder="add client email…"
+                        className="text-sm px-2 py-1 border border-amber-300 rounded w-56 focus:outline-none focus:ring-2 focus:ring-amber-100" />
+                      <button onClick={doAddEmail} disabled={!EMAIL_RE.test(newEmail.trim()) || busy === 'email'}
+                        className="text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 px-2.5 py-1 rounded disabled:opacity-40 inline-flex items-center gap-1">
+                        {busy === 'email' ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />} Add &amp; unblock
+                      </button>
+                      <Link to={`/clients/${request.clientId}`} className="text-xs text-amber-700 hover:text-amber-900 underline ml-1">or open client</Link>
+                    </div>
+                    {/* Honest about what this does and does not do: it fixes the
+                        address, it does not retro-send the email that never went. */}
+                    <div className="text-xs text-amber-700 mt-1.5">
+                      This sets the client's primary contact. The original send already happened —
+                      copy the link to them, or regenerate it below.
                     </div>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {/* A5: recovery from a chase the cron stopped early (no address at
+                the time). Rendered ONLY when resuming is actually possible, so
+                the button's presence is itself the explanation. */}
+            {canResume && (
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 flex items-center justify-between gap-3">
+                <div className="text-sm text-slate-700">
+                  <strong>Chasing stopped early.</strong> It was halted before the {MAX_CHASES} chases were used
+                  {request.chaseCount > 0 ? ` (${request.chaseCount} sent)` : ''} — usually because there was no
+                  email address at the time.
+                </div>
+                <button onClick={doResume} disabled={busy === 'resume'}
+                  className="text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 px-3 py-1.5 rounded disabled:opacity-40 inline-flex items-center gap-1.5 shrink-0">
+                  {busy === 'resume' ? <Loader2 size={11} className="animate-spin" /> : <Bell size={11} />} Resume chasing
+                </button>
               </div>
             )}
 

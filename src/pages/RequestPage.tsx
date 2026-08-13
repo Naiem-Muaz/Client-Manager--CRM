@@ -112,9 +112,14 @@ export function RequestPage() {
     return <Shell accent={NAVY}><div className="py-24 flex justify-center text-slate-400"><Loader2 size={22} className="animate-spin" /></div></Shell>;
   }
   if (phase === 'notfound' || phase === 'error') {
+    // The REPLACED-LINK sentence is the common case now, not an edge one: every
+    // chase email rotates the token, so a client returning to an older email in
+    // their inbox lands here having done nothing wrong. Without this line the
+    // page tells them their link "isn't valid" and leaves them to guess; with
+    // it, the fix is the next thing they read.
     return <Terminal accent={NAVY} icon={XCircle} tone="text-slate-400"
       title="This link isn't valid"
-      body="The link may be mistyped or no longer active. If you were expecting to upload documents, contact your accountant and they'll send a fresh link." />;
+      body="If you had a link before, it may have been replaced — please use the most recent email from us, or get in touch. The link may also be mistyped. If you were expecting to upload documents, contact your accountant and they'll send a fresh link." />;
   }
   if (phase === 'expired' || phase === 'cancelled') {
     const f = deadFirm;
