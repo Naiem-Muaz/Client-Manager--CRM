@@ -7,6 +7,9 @@ import { uploadDocument } from '../../hooks/useDocuments';
 interface Props {
     category?: DocumentCategory;
     clientId?: string;
+    /** Extra multipart fields — B3 passes { jobId } so job_id is set in the
+        SAME INSERT as the document, not by a follow-up PATCH. */
+    extra?: Record<string, string>;
     initialFile?: File | null;
     onClose: () => void;
     onUpload: (doc: VaultDocument) => void;
@@ -30,7 +33,7 @@ interface Props {
  */
 const MAX_SIZE_MB = 10;
 
-export function DocumentUploadModal({ category, clientId, initialFile, onClose, onUpload }: Props) {
+export function DocumentUploadModal({ category, clientId, extra, initialFile, onClose, onUpload }: Props) {
     const [file, setFile] = useState<File | null>(initialFile || null);
     const [selectedCategory, setSelectedCategory] = useState<DocumentCategory>(category || 'Client Uploads');
     const [taxYear, setTaxYear] = useState('');
@@ -59,6 +62,7 @@ export function DocumentUploadModal({ category, clientId, initialFile, onClose, 
 
         try {
             await uploadDocument(file, selectedCategory, clientId, setProgress, {
+                ...(extra ?? {}),
                 status,
                 ...(taxYear ? { taxYear } : {}),
             });

@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Search, Upload, FolderOpen, Trash2, X } from 'lucide-react';
 import {
   useVaultPage, useDocumentFacets,
-  deleteDocument, restoreDocument,
+  deleteDocument, restoreDocument, patchDocument, bulkDownload,
   type VaultFilters,
 } from '../hooks/useDocuments';
 import { DocumentRow, SOURCE_CHIPS, type ApiDocument } from '../components/documents/documentRow';
@@ -36,6 +36,7 @@ export function DocumentsPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [showUpload, setShowUpload] = useState(false);
   const [uploadClientId, setUploadClientId] = useState('');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   // Debounced search — 300ms. Typing a filename should not be one request per
   // keystroke against a route that mints a signed URL per row.
@@ -74,6 +75,24 @@ export function DocumentsPage() {
 
   const onDownload = (d: ApiDocument) => {
     if (d.fileUrl) window.open(d.fileUrl, '_blank', 'noopener');
+  };
+
+  const toggle = (d: ApiDocument, next: boolean) =>
+    setSelected((prev) => {
+      const s2 = new Set(prev);
+      if (next) s2.add(d.id); else s2.delete(d.id);
+      return s2;
+    });
+
+  const onEditTags = async (d: ApiDocument, tags: string[]) => {
+    if (!d.clientId) return;
+    setBusyId(d.id);
+    try {
+      await patchDocument(d.id, { tags }, d.clientId);
+      // Optimistic, but only for what the SERVER normalises predictably — the
+      // authoritative list arrives with the revalidate refreshAll triggers.
+      setAccumulated((prev) => prev.map((x) => (x.id === d.id ? { ...x, tags } : x)));
+    } finally { setBusyId(null); }
   };
 
   const onDelete = async (d: ApiDocument) => {
@@ -197,6 +216,23 @@ export function DocumentsPage() {
           </button>
         </div>
 
+        {selected.size > 0 && (
+          <div className="mb-3 flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+            <span className="text-sm text-slate-700">{selected.size} selected</span>
+            <button
+              onClick={() => bulkDownload([...selected])}
+              className="rounded bg-slate-900 px-3 py-1 text-xs font-medium text-white hover:bg-slate-800"
+            >
+              Download selected
+            </button>
+            <button onClick={() => setSelected(new Set())} className="text-xs text-slate-500 hover:text-slate-800">
+              Clear
+            </button>
+            {/* The server refuses the WHOLE request if any id is unreachable,
+                so there is no partial-zip state for this UI to explain. */}
+          </div>
+        )}
+
         {activeChips.length > 0 && (
           <div className="mb-3 flex flex-wrap gap-2">
             {activeChips.map((c, i) => (
@@ -222,9 +258,12 @@ export function DocumentsPage() {
                 doc={d}
                 showClient
                 busy={busyId === d.id}
+                selected={selected.has(d.id)}
+                onSelect={toggle}
                 onDownload={onDownload}
                 onDelete={onDelete}
                 onRestore={onRestore}
+                onEditTags={onEditTags}
               />
             ))
           )}

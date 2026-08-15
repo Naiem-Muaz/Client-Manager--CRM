@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, Image as ImageIcon, FileSpreadsheet, File, User, Download, Trash2, RotateCcw } from 'lucide-react';
+import { FileText, Image as ImageIcon, FileSpreadsheet, File, User, Download, Trash2, RotateCcw, Tag, Link2Off } from 'lucide-react';
 
 /**
  * SHARED DOCUMENT ROW PRIMITIVES — the client tab and the org vault use these.
@@ -110,6 +110,13 @@ interface RowProps {
   onDownload: (d: ApiDocument) => void;
   onDelete?: (d: ApiDocument) => void;
   onRestore?: (d: ApiDocument) => void;
+  /** B3 — inline tag editing. Omit to render tags read-only. */
+  onEditTags?: (d: ApiDocument, tags: string[]) => void;
+  /** B3 — shown in the job drawer only. */
+  onUnlinkJob?: (d: ApiDocument) => void;
+  /** B4 — multi-select. Omit for a non-selectable list. */
+  selected?: boolean;
+  onSelect?: (d: ApiDocument, next: boolean) => void;
   busy?: boolean;
 }
 
@@ -118,9 +125,26 @@ interface RowProps {
  * than disappearing — the whole point of B1's soft delete is that the record
  * is still there.
  */
-export function DocumentRow({ doc, showClient, onDownload, onDelete, onRestore, busy }: RowProps) {
+export function DocumentRow({
+  doc, showClient, onDownload, onDelete, onRestore,
+  onEditTags, onUnlinkJob, selected, onSelect, busy,
+}: RowProps) {
   const up = uploader(doc);
   const deleted = !!doc.deletedAt;
+  const tags = doc.tags ?? [];
+
+  /**
+   * Tags are edited as a comma-separated string — the server normalises
+   * (trim / lowercase / dedupe / caps), so the client deliberately does NOT
+   * pre-validate. One normaliser, server-side, or the two disagree about what
+   * 'VAT' and 'vat' mean and the ?tag= filter starts missing rows.
+   */
+  const editTags = () => {
+    if (!onEditTags) return;
+    const next = window.prompt('Tags (comma separated):', tags.join(', '));
+    if (next === null) return;
+    onEditTags(doc, next.split(',').map((t) => t.trim()).filter(Boolean));
+  };
 
   return (
     <div
@@ -129,6 +153,15 @@ export function DocumentRow({ doc, showClient, onDownload, onDelete, onRestore, 
       }`}
       data-testid="document-row"
     >
+      {onSelect && (
+        <input
+          type="checkbox"
+          checked={!!selected}
+          onChange={(e) => onSelect(doc, e.target.checked)}
+          className="shrink-0"
+          aria-label={`Select ${doc.fileName ?? 'document'}`}
+        />
+      )}
       <DocIcon mimeType={doc.mimeType} />
 
       <div className="min-w-0 flex-1">
@@ -165,6 +198,16 @@ export function DocumentRow({ doc, showClient, onDownload, onDelete, onRestore, 
               {doc.jobTitle}
             </span>
           )}
+          {tags.map((t) => (
+            <span key={t} className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600">
+              #{t}
+            </span>
+          ))}
+          {onEditTags && (
+            <button onClick={editTags} title="Edit tags" className="text-slate-400 hover:text-slate-700">
+              <Tag className="h-3 w-3" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -179,6 +222,16 @@ export function DocumentRow({ doc, showClient, onDownload, onDelete, onRestore, 
         >
           <Download className="h-4 w-4" />
         </button>
+        {onUnlinkJob && doc.jobId && (
+          <button
+            onClick={() => onUnlinkJob(doc)}
+            disabled={busy}
+            title="Unlink from this job"
+            className="rounded p-1.5 text-slate-400 hover:bg-amber-50 hover:text-amber-600 disabled:opacity-40"
+          >
+            <Link2Off className="h-4 w-4" />
+          </button>
+        )}
         {deleted
           ? onRestore && (
               <button

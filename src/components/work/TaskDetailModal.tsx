@@ -4,6 +4,7 @@ import { X, ExternalLink, Send, Clock, Check, Loader2, FileCheck } from 'lucide-
 import { Job, JobStatus, JobPriority, ChecklistStep, updateJob, useJobComments, addJobComment, logJobTime } from '../../hooks/useJobs';
 import { useTeamMembers } from '../../hooks/useTeam';
 import { CreateRequestModal } from '../documents/CreateRequestModal';
+import { JobDocumentsSection } from '../documents/JobDocumentsSection';
 
 export const STATUS_META: Record<JobStatus, { label: string; dot: string }> = {
   'not-started': { label: 'Not started', dot: 'bg-slate-400' },
@@ -231,6 +232,11 @@ export function TaskDetailModal({ job: initialJob, onClose, onChanged }: { job: 
               </button>
             </div>
           </div>
+
+          {/* B3 — documents attached to this job. 289 added documents.job_id and
+              this is its surface; it reads the vault route with ?jobId= so org
+              scoping is the same SQL predicate used everywhere else. */}
+          <JobDocumentsSection job={job as any} />
         </div>
 
         <div className="px-6 py-3 border-t border-slate-200 text-xs text-slate-400">

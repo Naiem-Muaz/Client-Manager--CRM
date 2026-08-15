@@ -138,3 +138,41 @@ export async function restoreDocument(documentId: string, clientId: string) {
   refreshAll(clientId);
   return res.data;
 }
+
+// ── B3 / B4 ─────────────────────────────────────────────────────────────────
+
+/** Link/unlink a job and/or replace tags. Server normalises tags — see §B3. */
+export async function patchDocument(
+  documentId: string,
+  patch: { jobId?: string | null; tags?: string[] },
+  clientId?: string,
+) {
+  const res = await NextGenAPI.patch(`${BASE}/${documentId}`, patch);
+  refreshAll(clientId);
+  return res.data;
+}
+
+/**
+ * Bulk download. ⛔ ALL OR NOTHING server-side: if any id is unreachable the
+ * whole request 404s rather than returning a zip quietly missing a file — so
+ * the UI never has to explain a partial archive.
+ */
+export async function bulkDownload(ids: string[]): Promise<void> {
+  const res = await NextGenAPI.post(`${BASE}/bulk-download`, { ids }, { responseType: 'blob' });
+  const disp = String(res.headers['content-disposition'] || '');
+  const name = /filename="([^"]+)"/.exec(disp)?.[1] || 'documents.zip';
+  const url = URL.createObjectURL(new Blob([res.data], { type: 'application/zip' }));
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/** Documents attached to one job — the vault route, filtered. */
+export function useJobDocuments(jobId?: string) {
+  const { data, isLoading } = useSWR<{ data: ApiDocument[] }>(
+    jobId ? vaultQuery({ jobId, limit: 100 }) : null,
+    fetcher,
+  );
+  return { documents: data?.data ?? [], isLoading };
+}
