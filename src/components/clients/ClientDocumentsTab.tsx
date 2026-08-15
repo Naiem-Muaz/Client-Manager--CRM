@@ -264,11 +264,16 @@ export function ClientDocumentsTab({ client }: { client: any }) {
                     Status and Tags columns were reading fields that do not
                     exist on any document row. */}
                 <div className="grid grid-cols-12 gap-4 px-6 py-3 bg-slate-50 text-xs font-semibold text-slate-500 border-b border-slate-200 uppercase tracking-wide">
-                    <div className="col-span-5">Name</div>
+                    <div className="col-span-4">Name</div>
                     <div className="col-span-2">Category</div>
                     <div className="col-span-2">Uploaded</div>
                     <div className="col-span-2">By</div>
-                    <div className="col-span-1 text-right">Action</div>
+                    {/* ⚠️ col-span-2, NOT 1. Four actions (signature, share,
+                        download, delete) at 28px plus gaps need ~136px; one
+                        twelfth of this table is ~83px, so they overflowed LEFT
+                        and sat on top of the By column. Name gives up the
+                        difference — it has the most slack and it truncates. */}
+                    <div className="col-span-2 text-right">Action</div>
                 </div>
 
                 <div className="flex-1 overflow-y-auto">
@@ -289,7 +294,7 @@ export function ClientDocumentsTab({ client }: { client: any }) {
                                 const size = fmtSize(doc.fileSize);
                                 return (
                                     <div key={doc.id} className="grid grid-cols-12 gap-4 px-6 py-4 items-center hover:bg-slate-50 transition-colors group">
-                                        <div className="col-span-5 flex items-center gap-3 overflow-hidden">
+                                        <div className="col-span-4 flex items-center gap-3 overflow-hidden">
                                             <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-blue-50 text-blue-600">
                                                 <FileText size={14} />
                                             </div>
@@ -310,16 +315,23 @@ export function ClientDocumentsTab({ client }: { client: any }) {
 
                                         <div className="col-span-2 text-sm text-slate-600">{fmtDate(doc.uploadedAt)}</div>
 
-                                        <div className="col-span-2 text-sm text-slate-600 truncate">
+                                        <div className="col-span-2 min-w-0 text-sm text-slate-600">
                                             {who.isClient ? (
                                                 <span
                                                     className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-full text-[11px] font-bold border border-emerald-100"
                                                     title={`${who.label} — source: ${doc.source ?? "staff"}`}
                                                 >
-                                                    <UserRound size={10} /> Client upload
+                                                    {/* ⚠️ who.label, NOT the literal "Client upload".
+                                                        The badge shows for ANY non-staff source, so a
+                                                        signed copy was being labelled a client upload —
+                                                        introduced when the source-aware uploader landed
+                                                        and the hardcoded text was left behind. */}
+                                                    <UserRound size={10} /> {who.label}
                                                 </span>
                                             ) : (
-                                                <span title={who.label}>{who.label}</span>
+                                                // `block truncate` so a long staff name ellipses
+                                                // inside its column rather than pushing the row wide.
+                                                <span className="block truncate" title={who.label}>{who.label}</span>
                                             )}
                                         </div>
 
@@ -327,7 +339,7 @@ export function ClientDocumentsTab({ client }: { client: any }) {
     touch device — there is no hover — so on a tablet these actions did not
     exist at all. Hover-reveal is a pointer-device affordance and is now
     scoped to one. */}
-                                        <div className="col-span-1 flex justify-end gap-2 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                                        <div className="col-span-2 flex justify-end items-center gap-1.5 whitespace-nowrap opacity-100 lg:opacity-0 lg:group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                                             {/* fileUrl is a freshly-signed, short-lived URL from the
                                                 list response (the NextGen DocumentsTab pattern).
                                                 Null means signing failed — disabled, not a dead

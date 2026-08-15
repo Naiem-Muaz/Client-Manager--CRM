@@ -30,7 +30,9 @@ interface ShareRow {
 
 const STATUS_META: Record<ShareRow['status'], { label: string; cls: string }> = {
   active:    { label: 'Active',    cls: 'bg-emerald-50 text-emerald-700' },
-  revoked:   { label: 'Withdrawn', cls: 'bg-slate-100 text-slate-500' },
+  // The button says Revoke, so the resulting state says Revoked. Two words
+  // for one state makes a user wonder whether they are two states.
+  revoked:   { label: 'Revoked',   cls: 'bg-slate-100 text-slate-500' },
   expired:   { label: 'Expired',   cls: 'bg-amber-50 text-amber-700' },
   exhausted: { label: 'Limit reached', cls: 'bg-amber-50 text-amber-700' },
 };
@@ -63,9 +65,20 @@ export function ShareDialog({ doc, onClose }: { doc: ApiDocument; onClose: () =>
     } finally { setMinting(false); }
   };
 
+  const [revoking, setRevoking] = useState<string | null>(null);
+
   const revoke = async (id: string) => {
-    await NextGenAPI.delete(`${key}/${id}`);
-    mutate();
+    // Confirm: revoking is instant, silent to whoever holds the link, and not
+    // undoable — the recovery is issuing a NEW link, which is a different link.
+    if (!window.confirm(
+      'Revoke this link?\n\nAnyone holding it will stop being able to download '
+      + 'the document immediately. This cannot be undone — you would need to '
+      + 'create a new link.')) return;
+    setRevoking(id);
+    try {
+      await NextGenAPI.delete(`${key}/${id}`);
+      await mutate();
+    } finally { setRevoking(null); }
   };
 
   const copy = async () => {
@@ -167,21 +180,36 @@ export function ShareDialog({ doc, onClose }: { doc: ApiDocument; onClose: () =>
               const meta = STATUS_META[s.status];
               return (
                 <div key={s.id} className="flex items-center gap-2 border-b border-slate-50 px-3 py-2 text-xs last:border-0">
-                  <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${meta.cls}`}>{meta.label}</span>
-                  <span className="text-slate-500">
-                    {new Date(s.expiresAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
+                  <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${meta.cls}`}>{meta.label}</span>
+
+                  {/* "Expires 22 Aug", not a bare date — a date on its own beside
+                      a status pill reads as "created on", which is the opposite
+                      of what it means. Past tense once it has passed. */}
+                  <span className="shrink-0 text-slate-500">
+                    {s.status === 'expired' ? 'Expired' : 'Expires'}{' '}
+                    {new Date(s.expiresAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
                   </span>
-                  <span className="text-slate-500">
-                    {s.accessCount}{s.maxDownloads != null ? ` / ${s.maxDownloads}` : ''} download{s.accessCount === 1 ? '' : 's'}
+
+                  <span className="shrink-0 text-slate-500">
+                    {s.maxDownloads != null
+                      ? `${s.accessCount} / ${s.maxDownloads} downloads`
+                      : `${s.accessCount} download${s.accessCount === 1 ? '' : 's'}`}
                   </span>
-                  <span className="ml-auto text-slate-400">{s.createdByName ?? ''}</span>
+
+                  <span className="ml-auto min-w-0 truncate text-slate-400" title={s.createdByName ?? ''}>
+                    {s.createdByName ?? ''}
+                  </span>
+
+                  {/* An unlabelled ⊘ is a guess. The label says what it does and
+                      the confirm says what that costs. */}
                   {!s.revokedAt && (
                     <button
                       onClick={() => revoke(s.id)}
-                      title="Withdraw this link"
-                      className="rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                      disabled={revoking === s.id}
+                      className="flex shrink-0 items-center gap-1 rounded border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-600 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
                     >
-                      <Ban className="h-3.5 w-3.5" />
+                      <Ban className="h-3 w-3" />
+                      {revoking === s.id ? 'Revoking…' : 'Revoke'}
                     </button>
                   )}
                 </div>
