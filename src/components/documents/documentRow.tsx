@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, Image as ImageIcon, FileSpreadsheet, File, User, Download, Trash2, RotateCcw, Tag, Link2Off } from 'lucide-react';
+import { FileText, Image as ImageIcon, FileSpreadsheet, File, User, Download, Trash2, RotateCcw, Tag, Link2Off, Share2 } from 'lucide-react';
 
 /**
  * SHARED DOCUMENT ROW PRIMITIVES — the client tab and the org vault use these.
@@ -114,6 +114,10 @@ interface RowProps {
   onEditTags?: (d: ApiDocument, tags: string[]) => void;
   /** B3 — shown in the job drawer only. */
   onUnlinkJob?: (d: ApiDocument) => void;
+  /** B5 — open the share dialog. Omit where sharing is not offered. */
+  onShare?: (d: ApiDocument) => void;
+  /** B5 — count of ACTIVE shares, shown as a badge. */
+  activeShares?: number;
   /** B4 — multi-select. Omit for a non-selectable list. */
   selected?: boolean;
   onSelect?: (d: ApiDocument, next: boolean) => void;
@@ -127,7 +131,7 @@ interface RowProps {
  */
 export function DocumentRow({
   doc, showClient, onDownload, onDelete, onRestore,
-  onEditTags, onUnlinkJob, selected, onSelect, busy,
+  onEditTags, onUnlinkJob, onShare, activeShares, selected, onSelect, busy,
 }: RowProps) {
   const up = uploader(doc);
   const deleted = !!doc.deletedAt;
@@ -222,6 +226,21 @@ export function DocumentRow({
         >
           <Download className="h-4 w-4" />
         </button>
+        {onShare && !deleted && (
+          <button
+            onClick={() => onShare(doc)}
+            disabled={busy}
+            title={activeShares ? `${activeShares} active share link${activeShares === 1 ? '' : 's'}` : 'Share'}
+            className="relative rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40"
+          >
+            <Share2 className="h-4 w-4" />
+            {!!activeShares && (
+              <span className="absolute -right-0.5 -top-0.5 rounded-full bg-emerald-500 px-1 text-[9px] font-semibold leading-[14px] text-white">
+                {activeShares}
+              </span>
+            )}
+          </button>
+        )}
         {onUnlinkJob && doc.jobId && (
           <button
             onClick={() => onUnlinkJob(doc)}

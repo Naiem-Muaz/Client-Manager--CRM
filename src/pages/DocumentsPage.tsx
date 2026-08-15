@@ -6,6 +6,7 @@ import {
   type VaultFilters,
 } from '../hooks/useDocuments';
 import { DocumentRow, SOURCE_CHIPS, type ApiDocument } from '../components/documents/documentRow';
+import { ShareDialog } from '../components/documents/ShareDialog';
 import { DocumentUploadModal } from '../components/documents/DocumentUploadModal';
 import { useClients } from '../hooks/useClients';
 
@@ -37,6 +38,7 @@ export function DocumentsPage() {
   const [showUpload, setShowUpload] = useState(false);
   const [uploadClientId, setUploadClientId] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [sharing, setSharing] = useState<ApiDocument | null>(null);
 
   // Debounced search — 300ms. Typing a filename should not be one request per
   // keystroke against a route that mints a signed URL per row.
@@ -264,6 +266,7 @@ export function DocumentsPage() {
                 onDelete={onDelete}
                 onRestore={onRestore}
                 onEditTags={onEditTags}
+                onShare={setSharing}
               />
             ))
           )}
@@ -286,6 +289,8 @@ export function DocumentsPage() {
           {counts.deleted > 0 && ` · ${counts.deleted} deleted`}
         </p>
       </main>
+
+      {sharing && <ShareDialog doc={sharing} onClose={() => setSharing(null)} />}
 
       {/* ── Upload: a client is chosen FIRST ─────────────────────────────── */}
       {showUpload && (
