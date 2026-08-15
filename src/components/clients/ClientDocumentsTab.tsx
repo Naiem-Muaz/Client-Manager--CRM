@@ -1,10 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import {
     Upload, Search, Folder, FileText, Download, Trash2, FileSignature, ShieldCheck,
-    Archive, BookOpen, Receipt, Mail, UploadCloud, Loader2, UserRound, PenLine,
+    Archive, BookOpen, Receipt, Mail, UploadCloud, Loader2, UserRound, Share2,
 } from 'lucide-react';
 import { DocumentCategory, FOLDERS } from '../../types/DocumentTypes';
 import { DocumentUploadModal } from '../documents/DocumentUploadModal';
+import { ShareDialog } from '../documents/ShareDialog';
+import { uploader as sourceUploader, type ApiDocument } from '../documents/documentRow';
 import { useDocuments, deleteDocument } from '../../hooks/useDocuments';
 import { RequestSignatureModal } from '../documents/RequestSignatureModal';
 
@@ -91,26 +93,33 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * unresolved staff id comes back as a bare uuid. Neither is a person's name and
  * neither should be printed as one.
  */
-function uploader(raw?: string | null): { label: string; isClient: boolean } {
-    const v = (raw || '').trim();
-    if (!v || v === 'Unknown') return { label: 'Unknown', isClient: false };
-    if (v.startsWith('client-request:')) return { label: 'Client upload', isClient: true };
-    if (UUID_RE.test(v)) return { label: 'Unknown', isClient: false };
-    return { label: v, isClient: false };
+/**
+ * ⚠️ REPLACED BY THE SHARED, SOURCE-FIRST HELPER.
+ *
+ * The local version read ONLY the legacy `uploadedBy` text, so it could answer
+ * correctly for a client-request upload (whose text carries the prefix) and
+ * WRONGLY for anything whose actor join resolved — a signed copy showed the
+ * staff display name rather than "Signed copy". 289 gave documents a typed
+ * `source` column and B1's mapDoc emits it; that is the authority now.
+ *
+ * `isClient` is kept as the local shape so the badge below is unchanged: the
+ * badge means "not a member of staff", which is exactly `muted`.
+ */
+function uploader(doc: any): { label: string; isClient: boolean } {
+    const r = sourceUploader(doc);
+    return { label: r.label, isClient: r.muted && r.label !== 'Unknown' };
 }
 
-interface ApiDocument {
-    id: string;
-    clientId?: string | null;
-    fileName?: string | null;
-    category?: string | null;
-    documentType?: string | null;
-    mimeType?: string | null;
-    fileSize?: number | null;
-    uploadedBy?: string | null;
-    uploadedAt?: string | null;
-    fileUrl?: string | null;
-}
+
+/**
+ * ⚠️ THE LOCAL INTERFACE IS GONE — it was a FOURTH document shape.
+ *
+ * It was written before 289 and knew nothing of `source`, `deletedAt`, `tags`
+ * or `jobId`, so a field the API has been sending since B1 was a type error to
+ * read. documentRow.tsx owns the shape now, which is the same file this tab
+ * already borrows `uploader` from.
+ */
+
 
 export function ClientDocumentsTab({ client }: { client: any }) {
     const [selectedCategory, setSelectedCategory] = useState<DocumentCategory | 'All' | typeof OTHER_ID>('All');
@@ -119,6 +128,7 @@ export function ClientDocumentsTab({ client }: { client: any }) {
     const [deletingId, setDeletingId] = useState<string | null>(null);
     // Only a PDF can be signed — the API refuses anything else, so the action
     // is offered only where it can succeed.
+    const [shareDoc, setShareDoc] = useState<any | null>(null);
     const [signDoc, setSignDoc] = useState<ApiDocument | null>(null);
 
     const { documents, isLoading, mutate } = useDocuments(client?.id);
@@ -275,7 +285,7 @@ export function ClientDocumentsTab({ client }: { client: any }) {
                     ) : (
                         <div className="divide-y divide-slate-100">
                             {filteredDocs.map(doc => {
-                                const who = uploader(doc.uploadedBy);
+                                const who = uploader(doc);
                                 const size = fmtSize(doc.fileSize);
                                 return (
                                     <div key={doc.id} className="grid grid-cols-12 gap-4 px-6 py-4 items-center hover:bg-slate-50 transition-colors group">
@@ -304,7 +314,7 @@ export function ClientDocumentsTab({ client }: { client: any }) {
                                             {who.isClient ? (
                                                 <span
                                                     className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-full text-[11px] font-bold border border-emerald-100"
-                                                    title={`Uploaded by the client through a document-request link (${doc.uploadedBy})`}
+                                                    title={`${who.label} — source: ${doc.source ?? "staff"}`}
                                                 >
                                                     <UserRound size={10} /> Client upload
                                                 </span>
@@ -313,7 +323,11 @@ export function ClientDocumentsTab({ client }: { client: any }) {
                                             )}
                                         </div>
 
-                                        <div className="col-span-1 flex justify-end gap-2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                                        {/* ⚠️ ALWAYS VISIBLE BELOW lg. `opacity-0 group-hover:` is unreachable on a
+    touch device — there is no hover — so on a tablet these actions did not
+    exist at all. Hover-reveal is a pointer-device affordance and is now
+    scoped to one. */}
+                                        <div className="col-span-1 flex justify-end gap-2 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                                             {/* fileUrl is a freshly-signed, short-lived URL from the
                                                 list response (the NextGen DocumentsTab pattern).
                                                 Null means signing failed — disabled, not a dead
@@ -324,7 +338,21 @@ export function ClientDocumentsTab({ client }: { client: any }) {
                                                     className="p-1.5 hover:bg-violet-100 text-slate-400 hover:text-violet-600 rounded-lg transition-colors"
                                                     title="Request signature"
                                                 >
-                                                    <PenLine size={16} />
+                                                    {/* Was PenLine — a bare pencil reads as "edit the
+                                                        document", which is not what this does. */}
+                                                    <FileSignature size={16} />
+                                                </button>
+                                            )}
+                                            {/* SHARE. This tab had NO share entry point — B5 wired the
+                                                dialog into the vault page only. In the action column
+                                                beside download and delete, where the other verbs are. */}
+                                            {!doc.deletedAt && (
+                                                <button
+                                                    onClick={() => setShareDoc(doc)}
+                                                    className="p-1.5 hover:bg-emerald-100 text-slate-400 hover:text-emerald-600 rounded-lg transition-colors"
+                                                    title="Share link"
+                                                >
+                                                    <Share2 size={16} />
                                                 </button>
                                             )}
                                             {doc.fileUrl ? (
@@ -358,6 +386,8 @@ export function ClientDocumentsTab({ client }: { client: any }) {
                     )}
                 </div>
             </div>
+
+            {shareDoc && <ShareDialog doc={shareDoc} onClose={() => setShareDoc(null)} />}
 
             {signDoc && (
                 <RequestSignatureModal
