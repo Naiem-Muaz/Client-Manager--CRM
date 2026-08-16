@@ -40,8 +40,11 @@ export function ClientTable({ clients, healthScores = {}, groupBy = false, archi
     const bulkAssign = (staffId: string) => runBulk('Assigning', c => patchClient(c.id, { assigned_staff_id: staffId || null }));
     const bulkAddTag = (tag: string) => runBulk('Tagging', c => patchClient(c.id, { addTag: tag }));
     const bulkArchive = () => {
-        if (archived) { if (!window.confirm(`Restore ${selected.size} client(s) to the active list?`)) return; return runBulk('Restoring', c => unarchiveClient(c.id)); }
-        if (!window.confirm(`Archive ${selected.size} client(s)? They will be hidden from the active list (reversible).`)) return;
+        // 482 Ruling 2: same warning on the bulk path. A control whose meaning
+        // changes without its label changing is a trap for whoever presses it
+        // next — and in bulk it is a trap for several people at once.
+        if (archived) { if (!window.confirm(`Restore ${selected.size} client(s) to the active list?\n\nThis also RESTORES their access to the Lumina app.`)) return; return runBulk('Restoring', c => unarchiveClient(c.id)); }
+        if (!window.confirm(`Archive ${selected.size} client(s)?\n\n• They will be hidden from the active list (reversible).\n• THIS ALSO ENDS THEIR ACCESS TO THE LUMINA APP, within 24 hours.\n\nUnarchiving restores it.`)) return;
         return runBulk('Archiving', c => archiveClient(c.id));
     };
     const bulkExport = () => {
@@ -64,9 +67,21 @@ export function ClientTable({ clients, healthScores = {}, groupBy = false, archi
 
     const handleArchive = async (client: any) => {
         setOpenMenuId(null);
+        // ⛔ ITEM 482, RULING 2. THE LABEL CHANGES WITH THE BEHAVIOUR.
+        // Archive used to mean "hide this from my list". Since 482 it also ENDS
+        // THE CLIENT'S ACCESS TO THE LUMINA APP — sign-in and token refresh both
+        // refuse an archived client. A member of staff tidying up an old record
+        // would otherwise cut off someone who is still paying, with nothing on
+        // screen having warned them.
+        //
+        // The 24-hour window is stated rather than hidden: access tokens live
+        // 24h and are not revoked, so an already-signed-in client keeps working
+        // until their token expires. Session revocation was ruled out as more
+        // risk than the gap it closes — but staff must not believe it is
+        // immediate.
         const msg = archived
-            ? `Restore ${client.legalName} to the active client list?`
-            : `Archive ${client.legalName}? They will be hidden from the active client list (reversible from the Archived view).`;
+            ? `Restore ${client.legalName} to the active client list?\n\nThis also RESTORES their access to the Lumina app.`
+            : `Archive ${client.legalName}?\n\n• They will be hidden from the active client list (reversible from the Archived view).\n• THIS ALSO ENDS THEIR ACCESS TO THE LUMINA APP, within 24 hours.\n\nUnarchiving restores it.`;
         if (!window.confirm(msg)) return;
         setArchivingId(client.id);
         try {

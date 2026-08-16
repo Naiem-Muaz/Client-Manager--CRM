@@ -39,9 +39,17 @@ export function DeleteClientModal({ client, onClose, onDeleted }: {
   const nameToConfirm = check?.name ?? client.name;
   const armed = typed === nameToConfirm;
 
+  // 482 Ruling 2: the THIRD archive entry point. Same behaviour change, same
+  // warning — a control whose meaning changes without its label changing is a
+  // trap, and one that is easy to miss is worse than one that is obvious.
   const doArchive = async () => {
+    if (!window.confirm(
+      `Archive ${client.name}?\n\n` +
+      '• They leave the active client list (reversible).\n' +
+      '• THIS ALSO ENDS THEIR ACCESS TO THE LUMINA APP, within 24 hours.\n\n' +
+      'Unarchiving restores it.')) return;
     setBusy(true); setError(null);
-    try { await archiveClient(client.id); onDeleted(); } // archived → also leaves the active list
+    try { await archiveClient(client.id); onDeleted(); }
     catch (e) { setError(errMsg(e, 'Failed to archive')); setBusy(false); }
   };
 
@@ -92,7 +100,7 @@ export function DeleteClientModal({ client, onClose, onDeleted }: {
               </div>
               <div className="flex items-center gap-3 pt-1">
                 <button onClick={doArchive} disabled={busy} className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm">
-                  {busy ? <Loader2 size={16} className="animate-spin" /> : <Archive size={16} />} Archive instead
+                  {busy ? <Loader2 size={16} className="animate-spin" /> : <Archive size={16} />} Archive instead (ends app access)
                 </button>
                 <button onClick={() => { setForce(true); setPhase('confirm'); }} disabled={busy}
                   className="text-sm text-rose-600 hover:text-rose-700 hover:underline font-medium px-2">
