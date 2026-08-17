@@ -35,6 +35,7 @@ import { LoginPage } from "./pages/LoginPage";
 import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 import { AcceptInvitePage } from "./pages/AcceptInvitePage";
+import { SignupsPage } from "./pages/SignupsPage";
 import { AuthProvider, RequireAuth } from "./context/AuthContext";
 
 import "./index.css";
@@ -95,6 +96,7 @@ function App() {
             <Route path="/inbox" element={<RouteErrorBoundary label="inbox"><InboxPage /></RouteErrorBoundary>} />
             <Route path="/submissions" element={<SubmissionsPage />} />
             <Route path="/audit" element={<AuditPage />} />
+            <Route path="/signups" element={<RouteErrorBoundary label="signups"><SignupsPage /></RouteErrorBoundary>} />
             <Route path="/setup" element={<SetupPage />} />
             <Route path="/vertical-slice" element={<VerticalSlicePage />} />
             <Route path="/mtd" element={<MTDCommandCentre />} />

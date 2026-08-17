@@ -22,7 +22,8 @@ import {
   Zap,
   ExternalLink,
   LogOut,
-  User as UserIcon
+  User as UserIcon,
+  UserPlus
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -43,6 +44,7 @@ export function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
     { icon: Users, label: 'Clients', to: '/clients' },
     // Accountant/staff feature — the backend role-gates it; hide from client-portal users.
     ...(user?.role !== 'client' ? [
+      { icon: UserPlus, label: 'Signups', to: '/signups' },
       { icon: InboxIcon, label: 'Inbox', to: '/inbox' },
       { icon: FileCheck, label: 'Requests', to: '/requests' },
       { icon: FileSignature, label: 'Proposals', to: '/proposals' },
