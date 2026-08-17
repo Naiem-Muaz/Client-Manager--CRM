@@ -118,7 +118,7 @@ function SignupCard({ signup }: { signup: SignupRow }) {
 }
 
 export function SignupsPage() {
-    const { signups, isLoading, isError, refresh } = useSignups();
+    const { signups, isLoading, isValidating, isError, refresh } = useSignups();
     const [filter, setFilter] = useState<SignupStatus | 'all'>('all');
 
     const filtered = useMemo(
@@ -147,9 +147,11 @@ export function SignupsPage() {
                 </div>
                 <button
                     onClick={refresh}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-slate-300 text-sm text-slate-700 hover:bg-slate-50"
+                    disabled={isValidating}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-slate-300 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-60"
                 >
-                    <RefreshCw className="h-3.5 w-3.5" /> Refresh
+                    <RefreshCw className={`h-3.5 w-3.5 ${isValidating ? 'animate-spin' : ''}`} />
+                    {isValidating ? 'Refreshing…' : 'Refresh'}
                 </button>
             </div>
 

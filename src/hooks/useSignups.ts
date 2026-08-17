@@ -31,10 +31,12 @@ export interface SignupRow {
 }
 
 export function useSignups() {
-    const { data, isLoading, error } = useSWR<SignupRow[]>(LIST_URL, fetcher);
+    const { data, isLoading, isValidating, error } = useSWR<SignupRow[]>(LIST_URL, fetcher);
     return {
         signups: Array.isArray(data) ? data : [],
         isLoading,
+        /** true while a revalidation is in flight — drives the Refresh spinner. */
+        isValidating,
         isError: error,
         refresh: () => mutate(LIST_URL),
     };
