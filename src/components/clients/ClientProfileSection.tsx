@@ -20,10 +20,23 @@ export function ClientProfileSection({ client, clientId, onSaved }: { client: an
     const hasContact = !!(client.email || client.phone);
 
     const saveContact = async () => {
+        // ⛔ NAME IS REQUIRED, AND THE PLACEHOLDER USED TO SAY "(optional)".
+        // client_manager.contacts.name is NOT NULL with no default, and
+        // setPrimaryContact's INSERT branch passes `input.name?.trim() || null`
+        // straight through — so a blank name on a client with NO existing
+        // contact is a 23502 from Postgres, surfaced as an unexplained 500.
+        // The UPDATE branch coalesces to the stored name, which is why EDITING a
+        // contact worked and ADDING one never did.
+        //
+        // The form is what was wrong: it promised optional and the column
+        // refuses null. Not fixed by making the column nullable (a migration
+        // touching every other writer) nor by defaulting to the legal name
+        // (which invents a person's name from a company's).
+        if (!name.trim()) { setErrorC('Contact name is required.'); return; }
         if (!EMAIL_RE.test(email.trim())) { setErrorC('Enter a valid email address.'); return; }
         setSavingC(true); setErrorC(null);
         try {
-            await NextGenAPI.post(`/brain/clients/${id}/primary-contact`, { email: email.trim(), name: name.trim() || undefined, phone: phone.trim() || undefined });
+            await NextGenAPI.post(`/brain/clients/${id}/primary-contact`, { email: email.trim(), name: name.trim(), phone: phone.trim() || undefined });
             setEditing(false); onSaved?.();
         } catch (e: any) { setErrorC(e?.response?.data?.error || 'Could not save the contact.'); } finally { setSavingC(false); }
     };
@@ -105,7 +118,7 @@ export function ClientProfileSection({ client, clientId, onSaved }: { client: an
                     </div>
                     {editing ? (
                         <div className="space-y-2 mt-1">
-                            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Contact name (optional)" className={inputCls} />
+                            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Contact name" className={inputCls} />
                             <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email address" type="email" className={inputCls} />
                             <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone (optional)" className={inputCls} />
                             {errorC && <p className="text-xs text-red-600">{errorC}</p>}

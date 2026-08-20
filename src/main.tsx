@@ -17,6 +17,7 @@ import { ReminderQueuePage } from "./pages/ReminderQueuePage";
 import { RequestsPage } from "./pages/RequestsPage";
 import { InboxPage } from "./pages/InboxPage";
 import { ErrorBoundary as RouteErrorBoundary } from "./components/ErrorBoundary";
+import { AppSWRConfig } from "./swrConfig";
 import { ComplianceDashboard } from "./pages/ComplianceDashboard";
 import { SubmissionsPage } from "./pages/SubmissionsPage";
 import { AuditPage } from "./pages/AuditPage";
@@ -116,6 +117,10 @@ function App() {
 
 createRoot(document.getElementById("root")!).render(
   <ErrorBoundary>
-    <App />
+    {/* Outside <App /> so EVERY hook inherits it, including any rendered by a
+        route that mounts before the router settles. */}
+    <AppSWRConfig>
+      <App />
+    </AppSWRConfig>
   </ErrorBoundary>
 );
