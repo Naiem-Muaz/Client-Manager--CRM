@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { entityKey, ENTITY_META, EntityKey } from '../../lib/entityType';
-import { User, MapPin, Phone, Mail, Building2, Ticket, Pencil, Plus, Check, X, Loader2 } from 'lucide-react';
+import { User, MapPin, Phone, Mail, Building2, Ticket, Pencil, Plus, Check, X, Loader2, AlertTriangle } from 'lucide-react';
+import { mutate } from 'swr';
 import { NextGenAPI } from '../../api/NextGenAPI';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -36,6 +37,30 @@ function validateCrn(raw: string): string | null {
  */
 const readCrn = (c: any): string =>
   c?.companyNumber && c.companyNumber !== 'undefined' ? String(c.companyNumber) : '';
+
+/**
+ * ── UTR ──────────────────────────────────────────────────────────────────────
+ * Exactly ten digits. Checked against production before being written: all 18
+ * UTRs currently stored in client_manager.clients match `^[0-9]{10}$` and none
+ * has any other shape, so this rejects nothing that already exists.
+ *
+ * ⚠️ NOT check-digit validated. A UTR's first digit IS a checksum over the
+ * other nine, but a client record has to be able to hold what the client
+ * actually gave us — a number that fails the checksum is far more likely to be
+ * a real transcription of a real letter than an invented one, and refusing it
+ * here would leave staff with nowhere to put it.
+ */
+const UTR_RE = /^\d{10}$/;
+
+function validateUtr(raw: string): string | null {
+  const v = raw.trim();
+  if (!v) return null;                       // empty clears
+  if (!UTR_RE.test(v)) return 'A UTR is exactly 10 digits.';
+  return null;
+}
+
+const readUtr = (c: any): string =>
+  c?.utr && c.utr !== 'undefined' ? String(c.utr) : '';
 const inputCls = 'w-full px-2 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-100';
 
 export function ClientProfileSection({ client, clientId, onSaved }: { client: any; clientId?: string; onSaved?: () => void }) {
@@ -83,30 +108,37 @@ export function ClientProfileSection({ client, clientId, onSaved }: { client: an
     const [postcode, setPostcode] = useState(client.address?.postcode || '');
     const [companyNumber, setCompanyNumber] = useState('');
     const [errCrn, setErrCrn] = useState<string | null>(null);
+    const [utr, setUtr] = useState('');
+    const [errUtr, setErrUtr] = useState<string | null>(null);
+    /** Set once a UTR change has been shown to the user; a second Save commits it. */
+    const [confirmUtr, setConfirmUtr] = useState(false);
     const [savingD, setSavingD] = useState(false);
     const [errorD, setErrorD] = useState<string | null>(null);
 
     /**
-     * ── WHY AN OVERLAY, WHEN onSaved ALREADY REVALIDATES ─────────────────────
-     * onSaved fires SWR's mutate (ClientDetailPage.tsx:250), so the value does
-     * come back — after a round trip. Until it lands the card would show the
-     * OLD number with the edit form already closed, which reads as "the save
-     * didn't work". The overlay shows the accepted value immediately; the
-     * refetch remains authoritative.
+     * ── THE SAVED VALUE IS WRITTEN INTO THE SWR CACHE, NOT A LOCAL OVERLAY ───
      *
-     * ⚠️ KEYED BY CLIENT ID. This component is not remounted on every route
-     * change, so an unkeyed overlay would show one client's number on the next
-     * client's card.
+     * ⚠️ THIS REPLACES the keyed local overlay the company-number field used.
+     * That overlay could only ever repaint THIS card. The identity chip in the
+     * page header — `client.utr ? UTR : CRN` at ClientDetailPage.tsx:147 — is a
+     * sibling component reading the same SWR entry, and a local overlay cannot
+     * reach it. Saving a UTR and watching the header still show the old one is
+     * the same "did that work?" moment the overlay existed to prevent.
+     *
+     * Writing the accepted values into the shared cache repaints BOTH
+     * immediately. `onSaved` then revalidates, and the server stays
+     * authoritative. Keying by client id is no longer needed: the cache entry
+     * IS keyed by client id.
      */
-    const [savedCrn, setSavedCrn] = useState<{ id: string; value: string } | null>(null);
-    const crnValue = savedCrn && savedCrn.id === id ? savedCrn.value : readCrn(client);
+    const cacheKey = `/brain/clients/${id}`;
 
     const startEditD = () => {
         setLegalName(client.legalName || ''); setEntity(entityKey(client.entityType));
         setLine1(client.address?.line1 || ''); setLine2(client.address?.line2 || '');
         setCity(client.address?.town || ''); setPostcode(client.address?.postcode || '');
-        setCompanyNumber(crnValue);
-        setErrorD(null); setErrCrn(null); setEditD(true);
+        setCompanyNumber(readCrn(client));
+        setUtr(readUtr(client));
+        setErrorD(null); setErrCrn(null); setErrUtr(null); setConfirmUtr(false); setEditD(true);
     };
     const saveDetails = async () => {
         if (!legalName.trim()) { setErrorD('Legal name is required.'); return; }
@@ -122,15 +154,55 @@ export function ClientProfileSection({ client, clientId, onSaved }: { client: an
          * Sending `companyNumber` here is silently dropped by the allow-list —
          * a save that reports success and changes nothing.
          */
+        const utrErr = validateUtr(utr);
+        setErrUtr(utrErr);
+        if (utrErr) { setErrorD(null); return; }
+
         const crn = companyNumber.trim().toUpperCase();
+        const nextUtr = utr.trim();
+        const prevUtr = readUtr(client);
+
+        /**
+         * ⛔ ONE EXTRA CLICK WHEN AN EXISTING UTR IS BEING REPLACED.
+         *
+         * A UTR is how HMRC matches this client to a record. Overwriting one
+         * that is already there is not the same act as filling in a blank, and
+         * this practice has mis-filed against a wrong UTR before — so the
+         * REPLACE case gets a deliberate second press and the other cases do
+         * not. Adding a first UTR, or clearing one, saves on the first click.
+         *
+         * Not a modal: a dialog here trains people to dismiss dialogs. The
+         * button changes what it says and waits.
+         */
+        if (prevUtr && nextUtr && prevUtr !== nextUtr && !confirmUtr) {
+            setConfirmUtr(true);
+            setErrorD(null);
+            return;
+        }
+
         setSavingD(true); setErrorD(null);
         try {
             await NextGenAPI.patch(`/brain/clients/${id}`, {
                 legal_name: legalName.trim(), entity_type: entity,
                 company_number: crn,
+                utr: nextUtr,
                 address_line1: line1.trim(), address_line2: line2.trim(), city: city.trim(), postcode: postcode.trim(),
             });
-            setSavedCrn({ id, value: crn });
+            /**
+             * Repaint the header chip and this card at once. `revalidate: false`
+             * because onSaved fires the refetch a line later — without it the
+             * same GET runs twice for one save.
+             *
+             * BOTH spellings of the company number are written: the API returns
+             * `companyNumber` (mapped) while the raw row is spread into the same
+             * object as `company_number`, and readers exist for each.
+             */
+            await mutate(
+                cacheKey,
+                (cur: any) => (cur ? { ...cur, utr: nextUtr || null, companyNumber: crn || null, company_number: crn || null } : cur),
+                { revalidate: false },
+            );
+            setConfirmUtr(false);
             setEditD(false); onSaved?.();
         } catch (e: any) { setErrorD(e?.response?.data?.error || 'Could not save.'); } finally { setSavingD(false); }
     };
@@ -168,23 +240,44 @@ export function ClientProfileSection({ client, clientId, onSaved }: { client: an
                         the only one of the two this form writes — a field labelled
                         "Reference" with a UTR in it and a CRN input under it would
                         be two facts in one box. */}
-                    <span className="text-slate-500 text-xs block">{editD ? 'Company number' : 'Reference'}</span>
+                    <span className="text-slate-500 text-xs block">Reference</span>
                     {editD ? (
-                        <div>
-                            <input
-                                value={companyNumber}
-                                onChange={(e) => { setCompanyNumber(e.target.value); if (errCrn) setErrCrn(null); }}
-                                placeholder="e.g. 16170908 or SC123456"
-                                className={inputCls}
-                                autoCapitalize="characters"
-                                spellCheck={false}
-                            />
-                            {errCrn && <p className="mt-1 text-[11px] text-red-600">{errCrn}</p>}
+                        <div className="space-y-2 mt-1">
+                            <div>
+                                <label className="text-[11px] text-slate-400 block mb-0.5">Company number</label>
+                                <input
+                                    value={companyNumber}
+                                    onChange={(e) => { setCompanyNumber(e.target.value); if (errCrn) setErrCrn(null); }}
+                                    placeholder="e.g. 16170908 or SC123456"
+                                    className={inputCls}
+                                    autoCapitalize="characters"
+                                    spellCheck={false}
+                                />
+                                {errCrn && <p className="mt-1 text-[11px] text-red-600">{errCrn}</p>}
+                            </div>
+                            <div>
+                                <label className="text-[11px] text-slate-400 block mb-0.5">UTR</label>
+                                <input
+                                    value={utr}
+                                    onChange={(e) => {
+                                        setUtr(e.target.value);
+                                        if (errUtr) setErrUtr(null);
+                                        // Editing again withdraws the confirmation — the value the
+                                        // user agreed to save is no longer the value in the box.
+                                        if (confirmUtr) setConfirmUtr(false);
+                                    }}
+                                    placeholder="10 digits"
+                                    inputMode="numeric"
+                                    className={inputCls}
+                                    spellCheck={false}
+                                />
+                                {errUtr && <p className="mt-1 text-[11px] text-red-600">{errUtr}</p>}
+                            </div>
                         </div>
                     ) : (
                         <div className="flex items-center gap-2">
                             <Ticket size={14} className="text-slate-400" />
-                            <span className="font-mono text-slate-700">{client.utr || crnValue || 'N/A'}</span>
+                            <span className="font-mono text-slate-700">{client.utr || readCrn(client) || 'N/A'}</span>
                         </div>
                     )}
                 </div>
@@ -244,8 +337,16 @@ export function ClientProfileSection({ client, clientId, onSaved }: { client: an
 
                 {editD && (
                     <div className="col-span-1 md:col-span-2 flex items-center gap-2 pt-1">
-                        <button onClick={saveDetails} disabled={savingD} className="text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded disabled:opacity-40 inline-flex items-center gap-1">{savingD ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />} Save details</button>
-                        <button onClick={() => { setEditD(false); setErrorD(null); }} className="text-xs font-medium text-slate-500 hover:text-slate-700 px-2 py-1.5 inline-flex items-center gap-1"><X size={12} /> Cancel</button>
+                        <button
+                            onClick={saveDetails}
+                            disabled={savingD}
+                            className={`text-xs font-bold text-white px-3 py-1.5 rounded disabled:opacity-40 inline-flex items-center gap-1 ${confirmUtr ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'}`}
+                        >
+                            {savingD ? <Loader2 size={12} className="animate-spin" /> : confirmUtr ? <AlertTriangle size={12} /> : <Check size={12} />}
+                            {confirmUtr ? 'Save anyway' : 'Save details'}
+                        </button>
+                        <button onClick={() => { setEditD(false); setErrorD(null); setConfirmUtr(false); }} className="text-xs font-medium text-slate-500 hover:text-slate-700 px-2 py-1.5 inline-flex items-center gap-1"><X size={12} /> Cancel</button>
+                        {confirmUtr && <p className="text-xs text-amber-700 font-medium">Changing UTR affects HMRC matching — save anyway?</p>}
                         {errorD && <p className="text-xs text-red-600">{errorD}</p>}
                     </div>
                 )}
