@@ -108,9 +108,23 @@ export function ClientDetailPage() {
       </div>
 
       {/* Header Card */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-8 mb-8 relative overflow-hidden">
-        <div className="absolute top-0 right-0 p-6 opacity-5 pointer-events-none">
-           {isCompany ? <Building2 size={160} /> : <User size={160} />}
+      {/* ⛔ overflow-hidden IS NOT ON THIS CARD ANY MORE, AND MUST NOT GO BACK.
+          The ⋯ menu is position:absolute INSIDE this card. With overflow-hidden
+          here, everything past the card's bottom edge was clipped — the menu
+          rendered six items and the user could see two ("Request documents…",
+          "View audit trail"). The other four, including "Delete client…", were
+          in the DOM, in the deployed bundle, correctly gated, and invisible.
+          That cost a role investigation and two deploys to find, because a
+          clipped control is indistinguishable from an absent one.
+
+          The overflow-hidden was only ever there to stop the decorative
+          watermark below spilling past the rounded corners, so it now clips
+          exactly that and nothing else. */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-8 mb-8 relative">
+        <div className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none">
+          <div className="absolute top-0 right-0 p-6 opacity-5">
+             {isCompany ? <Building2 size={160} /> : <User size={160} />}
+          </div>
         </div>
 
         <div className="relative z-10 flex justify-between items-start">
