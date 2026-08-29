@@ -10,7 +10,7 @@ import {
   ChevronUp,
   ExternalLink,
 } from 'lucide-react';
-import { lookupCompany, CompanyInfo } from '../../api/companiesHouse';
+import { lookupCompany, lookupOfficers, OfficerRow, CompanyInfo } from '../../api/companiesHouse';
 import { updateClient, patchClient } from '../../hooks/useClients';
 
 interface Props {
@@ -33,6 +33,18 @@ export interface CHSnapshot {
   date_of_creation: string | null;
   sic_codes: string[];
   fetched_at: string;
+  /**
+   * ⚠️ THE STORED ch_data IS THE RAW COMPANIES HOUSE PAYLOAD, which carries more
+   * than lookupCompany() maps. These are optional because a snapshot written
+   * before this release has none of them — the card renders what is there and
+   * says nothing about what is not.
+   */
+  accounts?: { next_due?: string | null; next_made_up_to?: string | null;
+               accounting_reference_date?: { day?: string; month?: string } | null } | null;
+  confirmation_statement?: { next_due?: string | null; next_made_up_to?: string | null } | null;
+  officers?: OfficerRow[];
+  officers_fetched_at?: string;
+  officers_error?: string;
 }
 
 type PanelState = 'idle' | 'loading' | 'preview' | 'saving' | 'success' | 'error_not_found' | 'error_api' | 'error_save';
@@ -102,8 +114,18 @@ export function CompaniesHousePanel({ client, onUpdated }: Props) {
     if (!freshData) return;
     setState('saving');
 
+    /**
+     * Officers come from a SECOND Companies House call, and it is allowed to
+     * fail. Letting it abort the save would discard a good company profile
+     * because a director list timed out — so the result is merged either way and
+     * a failure is RECORDED as officers_error rather than shown as an empty
+     * list. Same boundary the backend enrichment path draws.
+     */
+    const off = await lookupOfficers(freshData.company_number);
     const snapshot: CHSnapshot = {
       ...freshData,
+      ...(off.officers ? { officers: off.officers, officers_fetched_at: new Date().toISOString() } : {}),
+      ...(off.error ? { officers_error: off.error } : {}),
       fetched_at: new Date().toISOString(),
     };
 
@@ -139,10 +161,21 @@ export function CompaniesHousePanel({ client, onUpdated }: Props) {
     setFreshData(null);
   };
 
-  // Only render for company-type clients with a company number
-  if (client.entityType !== 'Company' && client.entityType !== 'Ltd' && client.entityType !== 'LLP') {
-    return null;
-  }
+  /**
+   * ⛔ THE GATE THAT USED TO BE HERE NEVER PASSED.
+   *
+   *   if (entityType !== 'Company' && entityType !== 'Ltd' && entityType !== 'LLP') return null;
+   *
+   * The database stores `limited_company` — the CHECK on client_manager.clients
+   * allows limited_company / sole_trader / partnership / llp / individual, and
+   * 'Company' and 'Ltd' are not among them. All 36 clients with a company
+   * number are stored as `limited_company`, so this component returned null for
+   * every one of them and the panel has never rendered on production data.
+   *
+   * Removed rather than corrected: the caller already decides. ClientDetailsSection
+   * switches on entityKey() and only mounts this for CH-registered entities, so a
+   * second gate here could only ever disagree with the first.
+   */
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -209,12 +242,51 @@ export function CompaniesHousePanel({ client, onUpdated }: Props) {
                   </div>
                 </div>
               )}
+              {/* ── Statutory dates. THE SAME VALUES THE DEADLINE ENGINE USES —
+                   accounts.next_due and confirmation_statement.next_due are what
+                   deriveAndGenerate reads to build CH_ACCOUNTS and
+                   CH_CONFIRMATION. If this card and the Deadlines tab ever
+                   disagree, one of them is reading a stale snapshot, and the
+                   footer below says when this one was taken. */}
+              {(stored.accounts || stored.confirmation_statement) && (
+                <>
+                  <FieldDiff label="Accounting Reference Date"
+                    stored={stored.accounts?.accounting_reference_date
+                      ? `${stored.accounts.accounting_reference_date.day} / ${stored.accounts.accounting_reference_date.month}`
+                      : null} />
+                  <FieldDiff label="Next Accounts Due"     stored={stored.accounts?.next_due ?? null} />
+                  <FieldDiff label="Next Confirmation Due" stored={stored.confirmation_statement?.next_due ?? null} />
+                </>
+              )}
             </>
           ) : (
             <div className="col-span-3 text-sm text-slate-400 italic py-2">
-              No data synced yet. Click "Refresh from CH" to pull the latest from Companies House.
+              {companyNumber
+                ? 'No Companies House data yet — use Refresh to pull it.'
+                : 'Add a company number to enable Companies House lookup.'}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Officers ─────────────────────────────────────────────────────── */}
+      {expanded && hasStored && stored && (
+        <OfficersBlock
+          officers={stored.officers}
+          fetchedAt={stored.officers_fetched_at}
+          error={stored.officers_error}
+        />
+      )}
+
+      {/* ── Provenance. A snapshot with no date on it is a claim about now. ── */}
+      {expanded && hasStored && stored && (
+        <div className="px-6 py-3 border-t border-slate-100 bg-white flex items-center gap-2 text-[11px] text-slate-400">
+          <Building2 size={11} />
+          <span>
+            From Companies House · fetched{' '}
+            {new Date(stored.fetched_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+            . Not editable here — correct it at Companies House, then Refresh.
+          </span>
         </div>
       )}
 
@@ -326,6 +398,84 @@ export function CompaniesHousePanel({ client, onUpdated }: Props) {
             </button>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+
+/**
+ * ── OFFICERS ────────────────────────────────────────────────────────────────
+ *
+ * ⚠️ RESIGNED OFFICERS ARE COLLAPSED, NOT OMITTED. A company's former directors
+ * are part of its record — the reason a client's history reads the way it does —
+ * so they stay one click away rather than disappearing.
+ *
+ * ⛔ AND AN ERROR IS NOT AN EMPTY LIST. If the officers call failed, this says
+ * so. Rendering "no officers" for a company that certainly has some is the
+ * report-your-own-intent defect: the app would be describing its own failed
+ * request as a fact about the world.
+ */
+function OfficersBlock({ officers, fetchedAt, error }: {
+  officers?: OfficerRow[]; fetchedAt?: string; error?: string;
+}) {
+  const [showResigned, setShowResigned] = useState(false);
+  if (error) {
+    return (
+      <div className="px-6 py-3 border-t border-slate-100 text-xs text-amber-700 flex items-center gap-2">
+        <AlertTriangle size={13} /> Officers could not be fetched ({error}). Refresh to try again.
+      </div>
+    );
+  }
+  if (!officers) {
+    return (
+      <div className="px-6 py-3 border-t border-slate-100 text-xs text-slate-400">
+        Officers not in this snapshot — Refresh to pull them.
+      </div>
+    );
+  }
+  const active = officers.filter((o) => !o.resigned_on);
+  const resigned = officers.filter((o) => o.resigned_on);
+  const fmt = (d?: string | null) => (d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
+
+  return (
+    <div className="px-6 py-4 border-t border-slate-100">
+      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+        Officers {fetchedAt && <span className="font-normal normal-case text-slate-400">· {active.length} current</span>}
+      </p>
+      {active.length === 0 && <p className="text-sm text-slate-400 italic">No current officers listed.</p>}
+      <ul className="space-y-1.5">
+        {active.map((o, i) => (
+          <li key={`${o.name}-${i}`} className="flex items-baseline justify-between gap-4 text-sm">
+            <span className="text-slate-800">{o.name}</span>
+            <span className="text-xs text-slate-400 whitespace-nowrap">
+              {o.role || '—'} · appointed {fmt(o.appointed_on)}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {resigned.length > 0 && (
+        <>
+          <button
+            onClick={() => setShowResigned((v) => !v)}
+            className="mt-3 text-xs font-medium text-slate-500 hover:text-slate-700 inline-flex items-center gap-1"
+          >
+            {showResigned ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+            {resigned.length} resigned officer{resigned.length === 1 ? '' : 's'}
+          </button>
+          {showResigned && (
+            <ul className="mt-2 space-y-1.5 pl-1 border-l-2 border-slate-100">
+              {resigned.map((o, i) => (
+                <li key={`${o.name}-r-${i}`} className="flex items-baseline justify-between gap-4 text-sm pl-3">
+                  <span className="text-slate-500">{o.name}</span>
+                  <span className="text-xs text-slate-400 whitespace-nowrap">
+                    {o.role || '—'} · resigned {fmt(o.resigned_on)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
       )}
     </div>
   );

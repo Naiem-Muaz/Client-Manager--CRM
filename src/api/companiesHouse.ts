@@ -87,3 +87,36 @@ export async function lookupCompany(companyNumber: string): Promise<CompanyInfo 
         return null;
     }
 }
+
+
+export interface OfficerRow {
+  name: string;
+  role?: string | null;
+  appointed_on?: string | null;
+  resigned_on?: string | null;
+  occupation?: string | null;
+  nationality?: string | null;
+}
+
+/**
+ * Officers for a company, INCLUDING resigned ones — the card collapses them
+ * rather than hiding them. The backend route defaults to active-only for its
+ * older caller, so the opt-in is explicit here.
+ *
+ * ⛔ NEVER THROWS. A failed officers call must not lose the company profile the
+ * Refresh just fetched; the caller stores what succeeded and records why the
+ * rest is missing. Same boundary the backend enrichment path draws.
+ */
+export async function lookupOfficers(companyNumber: string): Promise<{ officers?: OfficerRow[]; error?: string }> {
+  const cleaned = String(companyNumber || '').trim().toUpperCase();
+  if (!cleaned) return { officers: [] };
+  try {
+    const url = `${API_BASE}/companies-house/company/${encodeURIComponent(cleaned)}/officers?include_resigned=1`;
+    const res = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (!res.ok) return { error: `HTTP ${res.status}` };
+    const body = await res.json();
+    return { officers: (body?.data || []) as OfficerRow[] };
+  } catch (e: any) {
+    return { error: e?.message || 'unreachable' };
+  }
+}

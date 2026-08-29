@@ -30,7 +30,7 @@ import { ClientSnapshotsTab } from '../components/clients/ClientSnapshotsTab';
 import { ClientHmrcTab } from '../components/clients/ClientHmrcTab';
 import { ClientDeadlinesTab } from '../components/clients/ClientDeadlinesTab';
 import { ClientUpcomingDeadlinesCard } from '../components/clients/ClientUpcomingDeadlinesCard';
-import { CompaniesHousePanel } from '../components/clients/CompaniesHousePanel';
+import { ClientDetailsSection } from '../components/clients/ClientDetailsSection';
 import { ClientComplianceDatesCard } from '../components/clients/ClientComplianceDatesCard';
 import { ClientHealthScoreCard } from '../components/clients/ClientHealthScoreCard';
 import { ClientWIPCard } from '../components/clients/ClientWIPCard';
@@ -226,19 +226,10 @@ export function ClientDetailPage() {
       </div>
 
       {/* Companies House panel (limited companies — any legacy/canonical entity_type spelling) */}
-      {isCompany && (
-        <div className="mb-6">
-          <CompaniesHousePanel
-            client={{
-              id: client.id,
-              legalName: client.legalName,
-              companyNumber: crn ?? undefined,
-              entityType: client.entityType,
-              chData: client.chData ?? null,
-            }}
-          />
-        </div>
-      )}
+      {/* ── Details: one switch, entity-aware. See ClientDetailsSection. ── */}
+      <div className="mb-6">
+        <ClientDetailsSection client={client} clientId={id!} onUpdated={() => mutateClient(`/brain/clients/${id}`)} />
+      </div>
 
       {/* Tabs */}
       <div className="border-b border-slate-200 mb-8 overflow-x-auto">
