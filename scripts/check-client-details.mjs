@@ -114,5 +114,32 @@ for (const forbidden of ['unset', 'trust', 'other'])
   eq(m.STORABLE_ENTITY_TYPES.includes(forbidden), false,
      `⛔ ${forbidden} is renderable but NOT offerable — a save would 23514`);
 
+console.log('\n── the Overview three-column row has no fixed height ──');
+{
+  const { readFileSync } = await import('node:fs');
+  const page = readFileSync('src/pages/ClientDetailPage.tsx', 'utf8');
+  const cols = readFileSync('src/components/clients/ClientColumns.tsx', 'utf8');
+  // Strip comments so the prose explaining the fix is not mistaken for the fix
+  // being undone — the same trap connectionReleaseLeak.test.ts documents.
+  const code = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter((l) => !l.trimStart().startsWith('//')).join('\n');
+  const pageCode = code(page), colsCode = code(cols);
+
+  eq(/min-h-\[\d+px\]/.test(pageCode), false, '⛔ no fixed min-height anywhere on the client page');
+  eq(pageCode.includes('grid grid-cols-1 lg:grid-cols-3 gap-8'), true, 'the row is still a 3-col grid that collapses at lg');
+  eq(/grid grid-cols-3(?! )/.test(pageCode.replace('grid grid-cols-1 lg:grid-cols-3','')), false,
+     'no non-responsive grid-cols-3 left (the loading skeleton was one)');
+
+  // An empty state that is h-full AND centres its contents drifts to the middle
+  // of whatever the tallest column is. None of the three may do both.
+  // Anchored on the empty-state box specifically. Splitting on 'border-dashed'
+  // alone also caught the dashed "Add entity" BUTTON, which is not an empty
+  // state and has no business being p-6.
+  const emptyStates = colsCode.split('bg-slate-50 border border-dashed').slice(1).map((b) => b.slice(0, 400));
+  eq(emptyStates.length >= 3, true, 'found all three empty-state cards');
+  eq(emptyStates.some((b) => b.includes('h-full') && b.includes('justify-center')), false,
+     '⛔ no empty state is both h-full and vertically centred');
+  eq(emptyStates.every((b) => b.includes('p-6')), true, 'all three empty states share the compact p-6 box');
+}
+
 console.log(`\n${fail ? '✗' : '✓'} ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

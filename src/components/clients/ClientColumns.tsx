@@ -84,10 +84,11 @@ export function ClientActiveWorkColumn({ clientId }: { clientId?: string }) {
                         <div className="h-28 bg-slate-100 rounded-xl animate-pulse" />
                     </>
                 ) : openTasks.length === 0 ? (
-                    <div className="bg-slate-50 border border-dashed border-slate-200 rounded-xl p-8 text-center">
-                        <CircleDashed size={28} className="mx-auto text-slate-300 mb-3" />
-                        <p className="text-sm font-medium text-slate-600 mb-1">No active work</p>
-                        <p className="text-xs text-slate-400 mb-4">There are no open tasks for this client.</p>
+                    /* Same weight as the other two empty states — top-aligned, p-6. */
+                    <div className="bg-slate-50 border border-dashed border-slate-200 rounded-xl p-6 text-center">
+                        <CircleDashed size={22} className="mx-auto text-slate-300 mb-2" />
+                        <p className="text-sm font-medium text-slate-600">No active work</p>
+                        <p className="text-xs text-slate-400 mt-0.5 mb-3">There are no open tasks for this client.</p>
                         <Link to="/tasks" className="text-blue-600 text-sm font-medium hover:underline">View all tasks →</Link>
                     </div>
                 ) : (
@@ -194,10 +195,17 @@ export function ClientAlertsColumn({ clientId, onNavigate }: { clientId?: string
                 ))}
 
                 {!hasAny && (
-                    <div className="bg-slate-50 border border-dashed border-slate-200 rounded-xl p-8 text-center h-full flex flex-col items-center justify-center">
-                        <CheckCircle2 size={28} className="text-emerald-400 mb-3" />
-                        <p className="text-sm font-medium text-slate-600 mb-1">No active alerts</p>
-                        <p className="text-xs text-slate-400">Outstanding items for this client will appear here.</p>
+                    /* ⛔ NOT h-full, AND NOT justify-center. Grid items stretch
+                       to the tallest row, so a full-height box that centres its
+                       contents puts "No active alerts" in the middle of whatever
+                       the busiest column happens to be — hundreds of pixels down
+                       when the row was pinned to 600px, and still adrift whenever
+                       another column is tall. Compact and top-aligned, matching
+                       "No entities configured" beside it. */
+                    <div className="bg-slate-50 border border-dashed border-slate-200 rounded-xl p-6 text-center">
+                        <CheckCircle2 size={22} className="text-emerald-400 mx-auto mb-2" />
+                        <p className="text-sm font-medium text-slate-600">No active alerts</p>
+                        <p className="text-xs text-slate-400 mt-0.5">Outstanding items for this client will appear here.</p>
                     </div>
                 )}
             </div>

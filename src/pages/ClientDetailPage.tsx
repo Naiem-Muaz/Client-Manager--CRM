@@ -94,9 +94,11 @@ export function ClientDetailPage() {
   if (clientError) return <div className="p-8 text-red-600">Error loading client.</div>;
   if (!client) return <div className="p-8 space-y-4 animate-pulse">
       <div className="h-32 bg-slate-100 rounded-xl"></div>
-      <div className="grid grid-cols-3 gap-8">
-          <div className="col-span-2 h-64 bg-slate-100 rounded-xl"></div>
-           <div className="col-span-1 h-64 bg-slate-100 rounded-xl"></div>
+      {/* The real layout below is grid-cols-1 lg:grid-cols-3 and collapses
+          correctly; this loading skeleton was the only one that did not. */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-2 h-64 bg-slate-100 rounded-xl"></div>
+           <div className="lg:col-span-1 h-64 bg-slate-100 rounded-xl"></div>
       </div>
   </div>;
 
@@ -273,7 +275,15 @@ export function ClientDetailPage() {
       {activeTab === 'overview' && (
         <div className="space-y-8">
           <ClientProfileSection client={client} clientId={id} onSaved={() => mutateClient(`/brain/clients/${id}`)} />
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 min-h-[600px]">
+          {/* ⛔ NO min-h HERE. This carried `min-h-[600px]`, a fixed floor that
+              applied whether the columns held anything or not. With all three
+              empty — the ordinary state for a newly-onboarded client — the row
+              was still 600px tall, and because each column is `flex flex-col
+              h-full` with a `flex-1` body, the ALERTS empty state (which also
+              had `h-full … justify-center`) rendered vertically centred hundreds
+              of pixels down, leaving a blank gap above Client Health Score.
+              The row now takes the height of its tallest real content. */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               {/* Column 1: Entities */}
               <div className="h-full">
                   <ClientEntitiesColumn entities={entities} />
