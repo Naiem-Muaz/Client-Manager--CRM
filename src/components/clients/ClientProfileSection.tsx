@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { entityKey, ENTITY_META, EntityKey } from '../../lib/entityType';
+import { entityKey, ENTITY_META, EntityKey, STORABLE_ENTITY_TYPES } from '../../lib/entityType';
 import { User, MapPin, Phone, Mail, Building2, Ticket, Pencil, Plus, Check, X, Loader2, AlertTriangle } from 'lucide-react';
 import { mutate } from 'swr';
 import { NextGenAPI } from '../../api/NextGenAPI';
@@ -223,14 +223,26 @@ export function ClientProfileSection({ client, clientId, onSaved }: { client: an
 
                 <div className="space-y-1">
                     <span className="text-slate-500 text-xs block">Entity Type</span>
+                    {/*
+                      ⚠️ THE OPTIONS ARE THE VALUES THE DATABASE ACCEPTS, not every
+                      ENTITY_META key. That map now carries `unset` (the absence of
+                      a type) plus the display-legacy `trust` and `other`, none of
+                      which the CHECK on client_manager.clients permits — offering
+                      them would let a member of staff pick a value the save then
+                      refuses with a 23514.
+
+                      ⚠️ AND THE BADGE SHOWS THE LABEL, NOT THE STORED VALUE. This
+                      printed client.entityType raw, so a limited company read
+                      'limited_company'. The icon was worse: it compared against
+                      'Company', a value the CHECK does not permit, so every
+                      company got the individual icon.
+                    */}
                     {editD ? (
                         <select value={entity} onChange={(e) => setEntity(e.target.value as EntityKey)} className={inputCls}>
-                            {(Object.keys(ENTITY_META) as EntityKey[]).map((k) => <option key={k} value={k}>{ENTITY_META[k].label}</option>)}
+                            {STORABLE_ENTITY_TYPES.map((k) => <option key={k} value={k}>{ENTITY_META[k].label}</option>)}
                         </select>
                     ) : (
-                        <span className="inline-flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded text-slate-700 font-medium text-xs">
-                            {client.entityType === 'Company' ? <Building2 size={12} /> : <User size={12} />}{client.entityType}
-                        </span>
+                        <EntityBadge value={client.entityType} />
                     )}
                 </div>
 
@@ -352,5 +364,16 @@ export function ClientProfileSection({ client, clientId, onSaved }: { client: an
                 )}
             </div>
         </div>
+    );
+}
+
+
+/** Entity type as its label and badge, never as the stored spelling. */
+function EntityBadge({ value }: { value?: string | null }) {
+    const meta = ENTITY_META[entityKey(value)];
+    return (
+        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded font-medium text-xs ${meta.badge}`}>
+            <meta.icon size={12} />{meta.label}
+        </span>
     );
 }

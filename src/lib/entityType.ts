@@ -47,6 +47,15 @@ export const ENTITY_META: Record<EntityKey, { label: string; badge: string; icon
   unset:           { label: 'No entity type',  badge: 'bg-slate-100 text-slate-500',   icon: HelpCircle },
 };
 
+/**
+ * ⛔ THE ONLY VALUES A CLIENT ROW MAY BE SAVED WITH — the CHECK on
+ * client_manager.clients, transcribed. `unset` is the absence of a value and
+ * `trust`/`other` are display-legacy for imported data: all three render fine
+ * and none may be OFFERED in an editor, or the save fails with a 23514.
+ */
+export const STORABLE_ENTITY_TYPES: EntityKey[] =
+  ['limited_company', 'llp', 'sole_trader', 'partnership', 'individual'];
+
 /** Entities with a Companies House record — the ones with a Business Details card. */
 export const CH_REGISTERED: ReadonlySet<EntityKey> = new Set<EntityKey>(['limited_company', 'llp']);
 /** Natural persons — the ones with a Personal Details card. */

@@ -229,3 +229,36 @@ export async function finaliseSnapshot(clientId: string, snapshotId: string) {
 export function useEntity(entityId: string | null) {
   return { entity: null, isLoading: false, error: null };
 }
+
+// ── Related clients (D4b) ────────────────────────────────────────────────────
+export interface ClientRelationship {
+  id: string;
+  relationship: string;
+  /** 'from' = THIS client holds the relationship; 'to' = the other one does. */
+  direction: 'from' | 'to';
+  other_client_id: string;
+  other_name: string;
+  other_entity_type: string | null;
+  created_at: string;
+  created_by_name: string | null;
+}
+
+export function useClientRelationships(clientId: string | undefined) {
+  const { data, error, isLoading } = useSWR(
+    clientId ? `/brain/clients/${clientId}/relationships` : null, fetcher);
+  return { relationships: (data ?? []) as ClientRelationship[], isLoading, isError: error };
+}
+
+export async function addClientRelationship(
+  clientId: string, body: { to_client_id: string; relationship: string; direction?: 'from' | 'to' },
+) {
+  const res = await NextGenAPI.post(`/brain/clients/${clientId}/relationships`, body);
+  mutate(`/brain/clients/${clientId}/relationships`);
+  return res.data;
+}
+
+export async function removeClientRelationship(clientId: string, relId: string) {
+  const res = await NextGenAPI.delete(`/brain/clients/${clientId}/relationships/${relId}`);
+  mutate(`/brain/clients/${clientId}/relationships`);
+  return res.data;
+}

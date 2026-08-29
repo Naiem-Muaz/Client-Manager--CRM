@@ -80,5 +80,39 @@ eq(m.PERSONAL.has('unset'), false, '⛔ unset gets NEITHER card — it has its o
 eq(m.CH_REGISTERED.has('unset'), false, 'unset is not CH-registered either');
 eq(m.PERSONAL.has('partnership'), false, 'partnership gets neither — D4b');
 
+console.log('\n── formatDate: UK display, ISO storage ──');
+eq(m.formatDate('2027-01-07'), '07/01/2027', 'ISO → DD/MM/YYYY');
+eq(m.formatDate('2026-11-06'), '06/11/2026', 'another');
+eq(m.formatDate('2027-01-07T00:00:00.000Z'), '07/01/2027', 'a full ISO timestamp');
+eq(m.formatDate(''), '—', 'empty → em dash, not "Invalid Date"');
+eq(m.formatDate(null), '—', 'null → em dash');
+eq(m.formatDate('not a date'), '—', 'garbage → em dash');
+eq(m.formatDate('2027-01-07', ''), '07/01/2027', 'custom fallback unused when valid');
+// ⚠️ THE DAY MUST NOT SHIFT. `new Date('2027-01-07')` is midnight UTC; a local
+// formatter west of Greenwich prints the 6th, and every date this app shows is
+// a statutory one where a day out is the whole problem.
+eq(m.formatDate('2027-01-01'), '01/01/2027', '⚠️ 1 Jan does not slip to 31 Dec');
+eq(m.formatDate('2026-12-31'), '31/12/2026', '⚠️ 31 Dec does not slip to 1 Jan');
+
+console.log('\n── companyTypeLabel: the label, not the CH code ──');
+eq(m.companyTypeLabel('ltd'), 'Private Limited Company (LTD)', 'ltd');
+eq(m.companyTypeLabel('llp'), 'LLP', 'llp');
+eq(m.companyTypeLabel('plc'), 'PLC', 'plc');
+eq(m.companyTypeLabel('LTD'), 'Private Limited Company (LTD)', 'case-insensitive');
+eq(m.companyTypeLabel('private-unlimited-nsc'), 'Private Unlimited Company (no share capital)', 'a longer mapped code');
+eq(m.companyTypeLabel('some-future-type'), 'SOME FUTURE TYPE', '⚠️ unmapped → UPPERCASE, never the raw slug');
+eq(m.companyTypeLabel(''), '—', 'empty → em dash');
+eq(m.companyTypeLabel(null), '—', 'null → em dash');
+eq(m.companyStatusLabel('active'), 'Active', 'status title-cased');
+eq(m.companyStatusLabel('voluntary-arrangement'), 'Voluntary Arrangement', 'hyphens become spaces');
+
+console.log('\n── STORABLE_ENTITY_TYPES matches the DB CHECK ──');
+eq([...m.STORABLE_ENTITY_TYPES].sort(),
+   ['individual','limited_company','llp','partnership','sole_trader'],
+   'exactly the five the CHECK permits');
+for (const forbidden of ['unset', 'trust', 'other'])
+  eq(m.STORABLE_ENTITY_TYPES.includes(forbidden), false,
+     `⛔ ${forbidden} is renderable but NOT offerable — a save would 23514`);
+
 console.log(`\n${fail ? '✗' : '✓'} ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

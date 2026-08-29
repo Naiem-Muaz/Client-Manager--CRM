@@ -31,6 +31,7 @@ import { ClientHmrcTab } from '../components/clients/ClientHmrcTab';
 import { ClientDeadlinesTab } from '../components/clients/ClientDeadlinesTab';
 import { ClientUpcomingDeadlinesCard } from '../components/clients/ClientUpcomingDeadlinesCard';
 import { ClientDetailsSection } from '../components/clients/ClientDetailsSection';
+import { RelatedClientsSection } from '../components/clients/RelatedClientsSection';
 import { ClientComplianceDatesCard } from '../components/clients/ClientComplianceDatesCard';
 import { ClientHealthScoreCard } from '../components/clients/ClientHealthScoreCard';
 import { ClientWIPCard } from '../components/clients/ClientWIPCard';
@@ -72,6 +73,9 @@ export function ClientDetailPage() {
   const [activeTab, setActiveTab] = useState('overview');
   const [menuOpen, setMenuOpen] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
+  // Set when a person clicks "link" beside an officer; consumed by the
+  // Related-clients picker, which clears it.
+  const [officerPrefill, setOfficerPrefill] = useState<string | null>(null);
   const [showRequestDocs, setShowRequestDocs] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const navigate = useNavigate();
@@ -228,7 +232,23 @@ export function ClientDetailPage() {
       {/* Companies House panel (limited companies — any legacy/canonical entity_type spelling) */}
       {/* ── Details: one switch, entity-aware. See ClientDetailsSection. ── */}
       <div className="mb-6">
-        <ClientDetailsSection client={client} clientId={id!} onUpdated={() => mutateClient(`/brain/clients/${id}`)} />
+        <ClientDetailsSection
+          client={client}
+          clientId={id!}
+          onUpdated={() => mutateClient(`/brain/clients/${id}`)}
+          onLinkOfficer={(name) => setOfficerPrefill(name)}
+        />
+      </div>
+
+      {/* ── Related clients: EVERY entity type, including the ones with no
+             details card of their own. A partnership's partners and a person's
+             family are the same fact as a company's directors. ── */}
+      <div className="mb-6">
+        <RelatedClientsSection
+          clientId={id!}
+          prefillName={officerPrefill}
+          onPrefillConsumed={() => setOfficerPrefill(null)}
+        />
       </div>
 
       {/* Tabs */}

@@ -22,8 +22,8 @@ import { PersonalDetailsCard } from './PersonalDetailsCard';
  * what they are. The difference is actionable — one is a data-entry gap with a
  * fix, the other is not — so the branch says which and links to the fix.
  */
-export function ClientDetailsSection({ client, clientId, onUpdated }: {
-  client: any; clientId: string; onUpdated?: () => void;
+export function ClientDetailsSection({ client, clientId, onUpdated, onLinkOfficer }: {
+  client: any; clientId: string; onUpdated?: () => void; onLinkOfficer?: (name: string) => void;
 }) {
   const ek = entityKey(client?.entityType ?? client?.entity_type);
 
@@ -51,6 +51,7 @@ export function ClientDetailsSection({ client, clientId, onUpdated }: {
           chData: client?.ch_data ?? client?.chData ?? null,
         }}
         onUpdated={onUpdated}
+        onLinkOfficer={onLinkOfficer}
       />
     );
   }

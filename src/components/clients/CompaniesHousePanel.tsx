@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { lookupCompany, lookupOfficers, OfficerRow, CompanyInfo } from '../../api/companiesHouse';
 import { patchClient } from '../../hooks/useClients';
+import { formatDate, companyTypeLabel, companyStatusLabel } from '../../lib/format';
 
 interface Props {
   client: {
@@ -22,6 +23,8 @@ interface Props {
     chData?: CHSnapshot | null;
   };
   onUpdated?: () => void;
+  /** Clicking "link" beside an officer seeds the Related-clients picker. */
+  onLinkOfficer?: (name: string) => void;
 }
 
 export interface CHSnapshot {
@@ -82,7 +85,7 @@ function FieldDiff({ label, stored, fresh }: { label: string; stored?: string | 
   );
 }
 
-export function CompaniesHousePanel({ client, onUpdated }: Props) {
+export function CompaniesHousePanel({ client, onUpdated, onLinkOfficer }: Props) {
   const [state, setState] = useState<PanelState>('idle');
   const [freshData, setFreshData] = useState<CompanyInfo | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -204,7 +207,7 @@ export function CompaniesHousePanel({ client, onUpdated }: Props) {
             <h3 className="text-sm font-semibold text-slate-900">Companies House</h3>
             {hasStored && stored ? (
               <p className="text-xs text-slate-400 mt-0.5">
-                Last synced {new Date(stored.fetched_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                Last synced {formatDate(stored.fetched_at)}
               </p>
             ) : (
               <p className="text-xs text-slate-400 mt-0.5">No sync yet</p>
@@ -240,9 +243,13 @@ export function CompaniesHousePanel({ client, onUpdated }: Props) {
             <>
               <FieldDiff label="Registered Name"    stored={stored.company_name} />
               <FieldDiff label="Company Number"     stored={stored.company_number} />
-              <FieldDiff label="Company Status"     stored={stored.company_status} />
-              <FieldDiff label="Company Type"       stored={stored.company_type} />
-              <FieldDiff label="Incorporation Date" stored={stored.date_of_creation} />
+              <FieldDiff label="Company Status"     stored={companyStatusLabel(stored.company_status, '')} />
+              {/* ⚠️ THE LABEL, NOT THE CODE. Companies House returns `ltd`,
+                  `private-unlimited-nsc` and friends; a client record showing a
+                  lowercase slug reads like a bug. Unmapped codes uppercase
+                  rather than pass through raw — CH keeps adding types. */}
+              <FieldDiff label="Company Type"       stored={companyTypeLabel(stored.company_type, '')} />
+              <FieldDiff label="Incorporation Date" stored={formatDate(stored.date_of_creation, '')} />
               <FieldDiff label="Registered Address" stored={stored.registered_address} />
               {stored.sic_codes?.length > 0 && (
                 <div className="col-span-2 md:col-span-3 space-y-0.5">
@@ -266,8 +273,8 @@ export function CompaniesHousePanel({ client, onUpdated }: Props) {
                     stored={stored.accounts?.accounting_reference_date
                       ? `${stored.accounts.accounting_reference_date.day} / ${stored.accounts.accounting_reference_date.month}`
                       : null} />
-                  <FieldDiff label="Next Accounts Due"     stored={stored.accounts?.next_due ?? null} />
-                  <FieldDiff label="Next Confirmation Due" stored={stored.confirmation_statement?.next_due ?? null} />
+                  <FieldDiff label="Next Accounts Due"     stored={formatDate(stored.accounts?.next_due, '')} />
+                  <FieldDiff label="Next Confirmation Due" stored={formatDate(stored.confirmation_statement?.next_due, '')} />
                 </>
               )}
             </>
@@ -287,6 +294,7 @@ export function CompaniesHousePanel({ client, onUpdated }: Props) {
           officers={stored.officers}
           fetchedAt={stored.officers_fetched_at}
           error={stored.officers_error}
+          onLink={onLinkOfficer}
         />
       )}
 
@@ -296,7 +304,7 @@ export function CompaniesHousePanel({ client, onUpdated }: Props) {
           <Building2 size={11} />
           <span>
             From Companies House · fetched{' '}
-            {new Date(stored.fetched_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+            {formatDate(stored.fetched_at)}
             . Not editable here — correct it at Companies House, then Refresh.
           </span>
         </div>
@@ -428,8 +436,9 @@ export function CompaniesHousePanel({ client, onUpdated }: Props) {
  * report-your-own-intent defect: the app would be describing its own failed
  * request as a fact about the world.
  */
-function OfficersBlock({ officers, fetchedAt, error }: {
+function OfficersBlock({ officers, fetchedAt, error, onLink }: {
   officers?: OfficerRow[]; fetchedAt?: string; error?: string;
+  onLink?: (name: string) => void;
 }) {
   const [showResigned, setShowResigned] = useState(false);
   if (error) {
@@ -448,7 +457,8 @@ function OfficersBlock({ officers, fetchedAt, error }: {
   }
   const active = officers.filter((o) => !o.resigned_on);
   const resigned = officers.filter((o) => o.resigned_on);
-  const fmt = (d?: string | null) => (d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
+  // One helper, shared with the rest of the card — see lib/format.ts.
+  const fmt = (d?: string | null) => formatDate(d);
 
   return (
     <div className="px-6 py-4 border-t border-slate-100">
@@ -458,10 +468,21 @@ function OfficersBlock({ officers, fetchedAt, error }: {
       {active.length === 0 && <p className="text-sm text-slate-400 italic">No current officers listed.</p>}
       <ul className="space-y-1.5">
         {active.map((o, i) => (
-          <li key={`${o.name}-${i}`} className="flex items-baseline justify-between gap-4 text-sm">
+          <li key={`${o.name}-${i}`} className="flex items-baseline justify-between gap-4 text-sm group">
             <span className="text-slate-800">{o.name}</span>
-            <span className="text-xs text-slate-400 whitespace-nowrap">
+            <span className="text-xs text-slate-400 whitespace-nowrap flex items-center gap-2">
               {o.role || '—'} · appointed {fmt(o.appointed_on)}
+              {/* ⛔ MANUAL MATCH ONLY. This seeds the search box with the
+                  officer's name; a PERSON still chooses the client record.
+                  Auto-matching on name would put two directors called J Smith
+                  one wrong guess away from merging two people's tax affairs. */}
+              {onLink && (
+                <button onClick={() => onLink(o.name)}
+                  className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-blue-600 hover:text-blue-800 font-medium"
+                  title={`Link ${o.name} to an existing client`}>
+                  link
+                </button>
+              )}
             </span>
           </li>
         ))}

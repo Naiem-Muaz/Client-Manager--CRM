@@ -1,2 +1,3 @@
 export { validateNino, normaliseNino, formatNino, validateDob, formatDob } from '../src/lib/personalIdentity';
-export { entityKey, CH_REGISTERED, PERSONAL, ENTITY_META } from '../src/lib/entityType';
+export { entityKey, CH_REGISTERED, PERSONAL, ENTITY_META, STORABLE_ENTITY_TYPES } from '../src/lib/entityType';
+export { formatDate, companyTypeLabel, companyStatusLabel } from '../src/lib/format';
