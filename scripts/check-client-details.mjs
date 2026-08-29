@@ -114,6 +114,35 @@ for (const forbidden of ['unset', 'trust', 'other'])
   eq(m.STORABLE_ENTITY_TYPES.includes(forbidden), false,
      `⛔ ${forbidden} is renderable but NOT offerable — a save would 23514`);
 
+console.log('\n── validateClientCode: the practice code ──');
+eq(m.validateClientCode('TD-0001'), null, 'TD-0001');
+eq(m.validateClientCode('td-0001'), null, 'lowercase normalises');
+eq(m.validateClientCode('  td-0001 '), null, 'padded');
+eq(m.validateClientCode('AB'), null, '2 chars is the minimum');
+eq(m.validateClientCode('ABCDEFGHIJKL'), null, '12 chars is the maximum');
+eq(typeof m.validateClientCode('A'), 'string', '1 char rejected');
+eq(typeof m.validateClientCode('ABCDEFGHIJKLM'), 'string', '13 chars rejected');
+eq(typeof m.validateClientCode('TD 0001'), 'string', 'space rejected');
+eq(typeof m.validateClientCode('TD_0001'), 'string', 'underscore rejected');
+// ⛔ Unlike the CRN and UTR fields, empty is NOT acceptable: the column is NOT
+// NULL since migration 314 and every client has a code.
+eq(typeof m.validateClientCode(''), 'string', '⛔ empty REJECTED (NOT NULL column)');
+eq(typeof m.validateClientCode('   '), 'string', '⛔ whitespace REJECTED');
+eq(m.normaliseClientCode(' td-0042 '), 'TD-0042', 'normalises to uppercase, trimmed');
+
+console.log('\n── the reference column shows the practice code, not a tax reference ──');
+{
+  const { readFileSync } = await import('node:fs');
+  const table = readFileSync('src/components/clients/ClientTable.tsx', 'utf8');
+  const code = table.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\{\/\*[\s\S]*?\*\/\}/g, '');
+  eq(code.includes('client.clientReference'), true, 'the cell reads clientReference');
+  eq(code.includes("'No Ref'"), false, '⛔ "No Ref" is gone — every client has a code');
+  const profile = readFileSync('src/components/clients/ClientProfileSection.tsx', 'utf8');
+  eq(profile.includes('Client code'), true, 'the profile labels it "Client code"');
+  eq(profile.includes('Company number'), true, 'CRN keeps its own label');
+  eq(profile.includes('>UTR<') || profile.includes('UTR '), true, 'UTR keeps its own label');
+}
+
 console.log('\n── the Overview three-column row has no fixed height ──');
 {
   const { readFileSync } = await import('node:fs');

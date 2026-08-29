@@ -3,6 +3,7 @@ import { entityKey, ENTITY_META, EntityKey, STORABLE_ENTITY_TYPES } from '../../
 import { User, MapPin, Phone, Mail, Building2, Ticket, Pencil, Plus, Check, X, Loader2, AlertTriangle } from 'lucide-react';
 import { mutate } from 'swr';
 import { NextGenAPI } from '../../api/NextGenAPI';
+import { validateClientCode, normaliseClientCode } from '../../lib/personalIdentity';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -59,6 +60,10 @@ function validateUtr(raw: string): string | null {
   return null;
 }
 
+/** The practice code, whichever spelling the payload used. */
+const readClientCode = (c: any): string =>
+  String(c?.client_reference ?? c?.clientReference ?? '');
+
 const readUtr = (c: any): string =>
   c?.utr && c.utr !== 'undefined' ? String(c.utr) : '';
 const inputCls = 'w-full px-2 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-100';
@@ -106,6 +111,8 @@ export function ClientProfileSection({ client, clientId, onSaved }: { client: an
     const [line2, setLine2] = useState(client.address?.line2 || '');
     const [city, setCity] = useState(client.address?.town || '');
     const [postcode, setPostcode] = useState(client.address?.postcode || '');
+    const [clientCode, setClientCode] = useState('');
+    const [errCode, setErrCode] = useState<string | null>(null);
     const [companyNumber, setCompanyNumber] = useState('');
     const [errCrn, setErrCrn] = useState<string | null>(null);
     const [utr, setUtr] = useState('');
@@ -136,9 +143,10 @@ export function ClientProfileSection({ client, clientId, onSaved }: { client: an
         setLegalName(client.legalName || ''); setEntity(entityKey(client.entityType));
         setLine1(client.address?.line1 || ''); setLine2(client.address?.line2 || '');
         setCity(client.address?.town || ''); setPostcode(client.address?.postcode || '');
+        setClientCode(readClientCode(client));
         setCompanyNumber(readCrn(client));
         setUtr(readUtr(client));
-        setErrorD(null); setErrCrn(null); setErrUtr(null); setConfirmUtr(false); setEditD(true);
+        setErrorD(null); setErrCode(null); setErrCrn(null); setErrUtr(null); setConfirmUtr(false); setEditD(true);
     };
     const saveDetails = async () => {
         if (!legalName.trim()) { setErrorD('Legal name is required.'); return; }
@@ -154,9 +162,11 @@ export function ClientProfileSection({ client, clientId, onSaved }: { client: an
          * Sending `companyNumber` here is silently dropped by the allow-list —
          * a save that reports success and changes nothing.
          */
+        const codeErr = validateClientCode(clientCode);
+        setErrCode(codeErr);
         const utrErr = validateUtr(utr);
         setErrUtr(utrErr);
-        if (utrErr) { setErrorD(null); return; }
+        if (codeErr || utrErr) { setErrorD(null); return; }
 
         const crn = companyNumber.trim().toUpperCase();
         const nextUtr = utr.trim();
@@ -184,6 +194,7 @@ export function ClientProfileSection({ client, clientId, onSaved }: { client: an
         try {
             await NextGenAPI.patch(`/brain/clients/${id}`, {
                 legal_name: legalName.trim(), entity_type: entity,
+                client_reference: normaliseClientCode(clientCode),
                 company_number: crn,
                 utr: nextUtr,
                 address_line1: line1.trim(), address_line2: line2.trim(), city: city.trim(), postcode: postcode.trim(),
@@ -199,7 +210,7 @@ export function ClientProfileSection({ client, clientId, onSaved }: { client: an
              */
             await mutate(
                 cacheKey,
-                (cur: any) => (cur ? { ...cur, utr: nextUtr || null, companyNumber: crn || null, company_number: crn || null } : cur),
+                (cur: any) => (cur ? { ...cur, utr: nextUtr || null, companyNumber: crn || null, company_number: crn || null, client_reference: normaliseClientCode(clientCode) } : cur),
                 { revalidate: false },
             );
             setConfirmUtr(false);
@@ -252,18 +263,25 @@ export function ClientProfileSection({ client, clientId, onSaved }: { client: an
                         the only one of the two this form writes — a field labelled
                         "Reference" with a UTR in it and a CRN input under it would
                         be two facts in one box. */}
-                    <span className="text-slate-500 text-xs block">Reference</span>
+                    <span className="text-slate-500 text-xs block">Client code</span>
                     {editD ? (
                         <div className="space-y-2 mt-1">
+                            <div>
+                                <input
+                                    value={clientCode}
+                                    onChange={(e) => { setClientCode(e.target.value); if (errCode) setErrCode(null); }}
+                                    placeholder="TD-0001" className={inputCls}
+                                    autoCapitalize="characters" spellCheck={false}
+                                />
+                                {errCode && <p className="mt-1 text-[11px] text-red-600">{errCode}</p>}
+                            </div>
                             <div>
                                 <label className="text-[11px] text-slate-400 block mb-0.5">Company number</label>
                                 <input
                                     value={companyNumber}
                                     onChange={(e) => { setCompanyNumber(e.target.value); if (errCrn) setErrCrn(null); }}
-                                    placeholder="e.g. 16170908 or SC123456"
-                                    className={inputCls}
-                                    autoCapitalize="characters"
-                                    spellCheck={false}
+                                    placeholder="e.g. 16170908 or SC123456" className={inputCls}
+                                    autoCapitalize="characters" spellCheck={false}
                                 />
                                 {errCrn && <p className="mt-1 text-[11px] text-red-600">{errCrn}</p>}
                             </div>
@@ -274,22 +292,35 @@ export function ClientProfileSection({ client, clientId, onSaved }: { client: an
                                     onChange={(e) => {
                                         setUtr(e.target.value);
                                         if (errUtr) setErrUtr(null);
-                                        // Editing again withdraws the confirmation — the value the
-                                        // user agreed to save is no longer the value in the box.
                                         if (confirmUtr) setConfirmUtr(false);
                                     }}
-                                    placeholder="10 digits"
-                                    inputMode="numeric"
-                                    className={inputCls}
-                                    spellCheck={false}
+                                    placeholder="10 digits" inputMode="numeric" className={inputCls} spellCheck={false}
                                 />
                                 {errUtr && <p className="mt-1 text-[11px] text-red-600">{errUtr}</p>}
                             </div>
                         </div>
                     ) : (
-                        <div className="flex items-center gap-2">
-                            <Ticket size={14} className="text-slate-400" />
-                            <span className="font-mono text-slate-700">{client.utr || readCrn(client) || 'N/A'}</span>
+                        <div className="space-y-1">
+                            {/* ⛔ THREE FIELDS, THREE LABELS. This cell showed
+                                `utr || companyNumber || 'N/A'` — one slot for three
+                                different identifiers, so a client's UTR appeared
+                                under a heading that said "Reference". The practice
+                                code is ours; the other two are HMRC's and Companies
+                                House's, and they are never interchangeable. */}
+                            <div className="flex items-center gap-2">
+                                <Ticket size={14} className="text-slate-400" />
+                                <span className="font-mono text-slate-800">{readClientCode(client) || '—'}</span>
+                            </div>
+                            {readCrn(client) && (
+                                <div className="text-[11px] text-slate-500">
+                                    Company number <span className="font-mono text-slate-700">{readCrn(client)}</span>
+                                </div>
+                            )}
+                            {readUtr(client) && (
+                                <div className="text-[11px] text-slate-500">
+                                    UTR <span className="font-mono text-slate-700">{readUtr(client)}</span>
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
