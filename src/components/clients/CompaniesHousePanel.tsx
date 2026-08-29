@@ -11,7 +11,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { lookupCompany, lookupOfficers, OfficerRow, CompanyInfo } from '../../api/companiesHouse';
-import { updateClient, patchClient } from '../../hooks/useClients';
+import { patchClient } from '../../hooks/useClients';
 
 interface Props {
   client: {
@@ -130,12 +130,24 @@ export function CompaniesHousePanel({ client, onUpdated }: Props) {
     };
 
     try {
-      // Keep the display name fresh via the profile agent…
-      await updateClient(client.id, { legalName: freshData.company_name });
-
-      // …and persist Companies House data to the canonical client columns.
+      /**
+       * ⛔ ONE REQUEST, NOT TWO. This called updateClient() first — a PUT that
+       * routes through the client-profile agent purely to set legal_name — and
+       * only then patchClient(). Two calls, sequential, and the FIRST one 500'd:
+       * the PUT spreads its body flat into the agent while the agent expected a
+       * nested `clientDetails`, so it threw on `clientDetails.legalName`. The
+       * PATCH below never ran, which is why the failure looked like a request
+       * that never left the browser.
+       *
+       * The backend now accepts both shapes, so that call would work — but it
+       * was never needed. `legal_name` is on the PATCH allowlist
+       * (routes/brain.ts), so one PATCH writes the name and the Companies House
+       * columns together, atomically, in a single round trip. A second call that
+       * can fail independently is a second thing to go wrong for no gain.
+       */
       const addr = parseAddress(freshData.registered_address);
       await patchClient(client.id, {
+        legal_name: freshData.company_name,
         company_number: freshData.company_number,
         incorporation_date: freshData.date_of_creation || null,
         company_status: freshData.company_status,
