@@ -46,7 +46,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               // Fallback chain: user_id (current shape) → sub → id (future-proof).
               id: decoded.user_id || decoded.sub || decoded.id,
               email: decoded.email ?? '',
-              role: decoded.role,
+              // ⛔ `app_role` FIRST. `decoded.role` is NOT the application role.
+              //
+              // The backend hardcodes the JWT's `role` claim to the literal
+              // "authenticated" (routes/auth.ts:256) because PostgREST does
+              // SET ROLE from it, and moved the authorisation-carrying value to
+              // `app_role` (auth.ts:260). This line read `decoded.role` alone,
+              // so every CRM user resolved to role "authenticated" — meaning
+              // `user?.role === 'super_admin'` was false for EVERYONE, however
+              // they were provisioned. That hid Delete client
+              // (ClientDetailPage.tsx:79) and the Sponsor Compliance / Team
+              // Attendance tabs (SetupPage.tsx:46). No database change could
+              // have fixed it: the value never carried a role.
+              //
+              // The `??` keeps tokens minted BEFORE that change working — those
+              // carry the real role in `role` and have no `app_role` — which is
+              // exactly the fallback the server itself uses at
+              // middleware/auth.ts:171.
+              role: decoded.app_role ?? decoded.role,
               organisation_id: decoded.organisation_id,
               // Additive: present only in tokens minted after the display_name claim
               // change; older tokens simply leave this undefined (falls back to role).

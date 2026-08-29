@@ -71,12 +71,21 @@ export function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
       {/* Logo Area */}
       <div className="h-16 flex items-center px-5 bg-white relative border-b border-slate-200">
         <div className="flex items-center gap-3 overflow-hidden">
-          {/* NextGen brand mark (self-contained green tile — sits on the white sidebar) */}
-          <img src="/nextgen-icon.svg" alt="NextGen" width={32} height={32}
+          {/* Brand mark (self-contained green tile — sits on the white sidebar).
+              The ICON file keeps its nextgen-* name: renaming a public asset
+              breaks the manifest and the cached favicon for no visible gain. */}
+          <img src="/nextgen-icon.svg" alt="TaxxDigital CRM" width={32} height={32}
             className="w-8 h-8 rounded shadow-sm flex-shrink-0" />
           {/* Wordmark: brand dark-green on white. */}
+          {/* ⚠️ THE WORDMARK IS THE ONLY THING TELLING TWO APPS APART.
+              This app is served at crm.taxxdigital.co.uk from the
+              Client Manager-CRM repo (Vite). The OTHER app — Next.js,
+              nextgen/frontend in the monorepo — is at app.taxxdigital.co.uk and
+              is linked below as "MTD Workspace". Both once said "NextGen" here,
+              and a frontend change was shipped to the wrong one because of it.
+              See docs/deployment-map.md in the monorepo. */}
           <span style={{ color: '#12352A' }} className={`font-bold text-lg tracking-wide whitespace-nowrap overflow-hidden transition-all duration-300 ${collapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'}`}>
-            NextGen
+            TaxxDigital CRM
           </span>
         </div>
       </div>

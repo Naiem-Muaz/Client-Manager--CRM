@@ -4,6 +4,38 @@ import { User, MapPin, Phone, Mail, Building2, Ticket, Pencil, Plus, Check, X, L
 import { NextGenAPI } from '../../api/NextGenAPI';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * ── COMPANY NUMBER ───────────────────────────────────────────────────────────
+ * Eight digits (England & Wales), or two letters and six digits (SC…, NI…, OC…).
+ * Ported from the NextGen app's DetailsTab, deliberately unchanged: two apps
+ * writing the SAME column through the SAME endpoint must not disagree about
+ * what is acceptable.
+ *
+ * The message says "doesn't look like" and not "is invalid" — Companies House
+ * has issued prefixes this pattern does not know, and a client record is not
+ * the place to refuse a number that exists.
+ */
+const CRN_RE = /^(?:\d{8}|[A-Z]{2}\d{6})$/;
+
+/** Error string, or null when acceptable. EMPTY IS ACCEPTABLE — it clears the field. */
+function validateCrn(raw: string): string | null {
+  const v = raw.trim().toUpperCase();
+  if (!v) return null;
+  if (!CRN_RE.test(v)) {
+    return "That doesn't look like a company number — 8 digits, or 2 letters and 6 digits.";
+  }
+  return null;
+}
+
+/**
+ * ⚠️ THE STRING "undefined" IS A REAL VALUE IN THIS COLUMN. Some rows were
+ * written with a stringified undefined, so a bare truthiness test renders the
+ * word "undefined" as if it were a company number. Every reader here goes
+ * through this function.
+ */
+const readCrn = (c: any): string =>
+  c?.companyNumber && c.companyNumber !== 'undefined' ? String(c.companyNumber) : '';
 const inputCls = 'w-full px-2 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-100';
 
 export function ClientProfileSection({ client, clientId, onSaved }: { client: any; clientId?: string; onSaved?: () => void }) {
@@ -49,23 +81,56 @@ export function ClientProfileSection({ client, clientId, onSaved }: { client: an
     const [line2, setLine2] = useState(client.address?.line2 || '');
     const [city, setCity] = useState(client.address?.town || '');
     const [postcode, setPostcode] = useState(client.address?.postcode || '');
+    const [companyNumber, setCompanyNumber] = useState('');
+    const [errCrn, setErrCrn] = useState<string | null>(null);
     const [savingD, setSavingD] = useState(false);
     const [errorD, setErrorD] = useState<string | null>(null);
+
+    /**
+     * ── WHY AN OVERLAY, WHEN onSaved ALREADY REVALIDATES ─────────────────────
+     * onSaved fires SWR's mutate (ClientDetailPage.tsx:250), so the value does
+     * come back — after a round trip. Until it lands the card would show the
+     * OLD number with the edit form already closed, which reads as "the save
+     * didn't work". The overlay shows the accepted value immediately; the
+     * refetch remains authoritative.
+     *
+     * ⚠️ KEYED BY CLIENT ID. This component is not remounted on every route
+     * change, so an unkeyed overlay would show one client's number on the next
+     * client's card.
+     */
+    const [savedCrn, setSavedCrn] = useState<{ id: string; value: string } | null>(null);
+    const crnValue = savedCrn && savedCrn.id === id ? savedCrn.value : readCrn(client);
 
     const startEditD = () => {
         setLegalName(client.legalName || ''); setEntity(entityKey(client.entityType));
         setLine1(client.address?.line1 || ''); setLine2(client.address?.line2 || '');
         setCity(client.address?.town || ''); setPostcode(client.address?.postcode || '');
-        setErrorD(null); setEditD(true);
+        setCompanyNumber(crnValue);
+        setErrorD(null); setErrCrn(null); setEditD(true);
     };
     const saveDetails = async () => {
         if (!legalName.trim()) { setErrorD('Legal name is required.'); return; }
+        const crnErr = validateCrn(companyNumber);
+        setErrCrn(crnErr);
+        if (crnErr) { setErrorD(null); return; }
+        /**
+         * ⛔ THREE NAMES, ONE FACT — and they are not interchangeable.
+         *   send   `company_number`  (snake_case; the PATCH allow-list at
+         *                             routes/brain.ts:1493 accepts nothing else)
+         *   read   `client.companyNumber`  (GET /brain/clients/:id maps it)
+         *   and the OTHER route aliases it `AS crn` (routes/clients.ts:77)
+         * Sending `companyNumber` here is silently dropped by the allow-list —
+         * a save that reports success and changes nothing.
+         */
+        const crn = companyNumber.trim().toUpperCase();
         setSavingD(true); setErrorD(null);
         try {
             await NextGenAPI.patch(`/brain/clients/${id}`, {
                 legal_name: legalName.trim(), entity_type: entity,
+                company_number: crn,
                 address_line1: line1.trim(), address_line2: line2.trim(), city: city.trim(), postcode: postcode.trim(),
             });
+            setSavedCrn({ id, value: crn });
             setEditD(false); onSaved?.();
         } catch (e: any) { setErrorD(e?.response?.data?.error || 'Could not save.'); } finally { setSavingD(false); }
     };
@@ -98,11 +163,30 @@ export function ClientProfileSection({ client, clientId, onSaved }: { client: an
                 </div>
 
                 <div className="space-y-1">
-                    <span className="text-slate-500 text-xs block">Reference</span>
-                    <div className="flex items-center gap-2">
-                        <Ticket size={14} className="text-slate-400" />
-                        <span className="font-mono text-slate-700">{client.utr || (client.companyNumber !== 'undefined' ? client.companyNumber : null) || 'N/A'}</span>
-                    </div>
+                    {/* Viewing shows the REFERENCE (UTR first, else the company
+                        number). Editing shows the company number, because that is
+                        the only one of the two this form writes — a field labelled
+                        "Reference" with a UTR in it and a CRN input under it would
+                        be two facts in one box. */}
+                    <span className="text-slate-500 text-xs block">{editD ? 'Company number' : 'Reference'}</span>
+                    {editD ? (
+                        <div>
+                            <input
+                                value={companyNumber}
+                                onChange={(e) => { setCompanyNumber(e.target.value); if (errCrn) setErrCrn(null); }}
+                                placeholder="e.g. 16170908 or SC123456"
+                                className={inputCls}
+                                autoCapitalize="characters"
+                                spellCheck={false}
+                            />
+                            {errCrn && <p className="mt-1 text-[11px] text-red-600">{errCrn}</p>}
+                        </div>
+                    ) : (
+                        <div className="flex items-center gap-2">
+                            <Ticket size={14} className="text-slate-400" />
+                            <span className="font-mono text-slate-700">{client.utr || crnValue || 'N/A'}</span>
+                        </div>
+                    )}
                 </div>
 
                 {/* Contact — Phase 1 inline (primary contact + reminder unblock) */}
