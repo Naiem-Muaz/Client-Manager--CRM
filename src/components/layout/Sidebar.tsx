@@ -26,13 +26,15 @@ import {
   UserPlus
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { roleLabel } from '../../lib/userDisplay';
 
 interface SidebarProps {
   collapsed: boolean;
   setCollapsed: (collapsed: boolean) => void;
 }
 
-const roleLabel = (r?: string) => (r ? r.replace(/[_-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'Signed in');
+// roleLabel now lives in lib/userDisplay so the top bar can render the same
+// person the same way. Behaviour unchanged.
 
 export function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
   const { user, logout } = useAuth();

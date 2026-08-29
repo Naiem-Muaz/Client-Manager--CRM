@@ -1,7 +1,10 @@
 import React from 'react';
 import { Search, Bell, AlertTriangle, Sparkles, AlertCircle } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import { roleLabel, initials } from '../../lib/userDisplay';
 
 export function TopBar() {
+  const { user } = useAuth();
   return (
     <div className="h-16 bg-bg-surface border-b border-divider flex items-center justify-between px-6 sticky top-0 z-40 shadow-sm">
         {/* Left: Breadcrumbs */}
@@ -45,12 +48,16 @@ export function TopBar() {
 
              {/* User Menu */}
              <div className="flex items-center gap-3 cursor-pointer hover:bg-slate-50 p-1.5 rounded-lg transition-colors border border-transparent hover:border-slate-200">
+                {/* ⚠️ WAS HARDCODED "NG" / "NextGen Admin" / "Platform Admin" —
+                    the same three strings for every member of the practice, on
+                    every page. "Platform Admin" is not even a role this system
+                    has; the eight real ones are in the user_profiles CHECK. */}
                 <div className="w-8 h-8 rounded-full bg-brand-secondary flex items-center justify-center text-xs font-bold text-white shadow-sm ring-2 ring-white">
-                    NG
+                    {initials(user?.name, user?.email)}
                 </div>
                 <div className="hidden md:block text-right">
-                    <p className="text-xs font-bold text-slate-700 leading-tight">NextGen Admin</p>
-                    <p className="text-[10px] text-slate-500 font-medium">Platform Admin</p>
+                    <p className="text-xs font-bold text-slate-700 leading-tight">{user?.name || user?.email || 'Signed in'}</p>
+                    <p className="text-[10px] text-slate-500 font-medium">{roleLabel(user?.role)}</p>
                 </div>
              </div>
         </div>

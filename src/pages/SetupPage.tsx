@@ -61,12 +61,21 @@ export function SetupPage() {
             </div>
 
             {/* Tab Navigation */}
-            <div className="flex space-x-1 bg-slate-100 p-1 rounded-xl">
+            {/* ⚠️ overflow-x-auto + min-w-fit on the buttons, NOT flex-wrap.
+                With eleven tabs (super_admin sees Sponsor Compliance and Team
+                Attendance) the strip is wider than its max-w-5xl container and
+                was simply clipped — the last tabs could not be reached at all.
+                `flex-1` alone shrinks items to zero-basis but `min-width: auto`
+                floors them at content width, so the row overflowed with no way
+                to scroll. min-w-fit keeps that floor explicit and the container
+                now scrolls; the buttons still STRETCH to fill when they fit, so
+                a nine-tab (non-super-admin) strip looks exactly as before. */}
+            <div className="flex space-x-1 bg-slate-100 p-1 rounded-xl overflow-x-auto">
                 {tabs.map(tab => (
                     <button
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id)}
-                        className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-lg text-sm font-medium transition-all ${
+                        className={`flex-1 min-w-fit whitespace-nowrap flex items-center justify-center gap-2 py-3 px-4 rounded-lg text-sm font-medium transition-all ${
                             activeTab === tab.id 
                                 ? 'bg-white text-blue-600 shadow-sm' 
                                 : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
