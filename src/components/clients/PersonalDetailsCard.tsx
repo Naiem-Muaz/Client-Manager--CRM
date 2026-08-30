@@ -31,6 +31,9 @@ export function PersonalDetailsCard({ client, clientId, onSaved }: {
   const [errNino, setErrNino] = useState<string | null>(null);
   const [errDob, setErrDob] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [mtdStatus, setMtdStatus] = useState<string>('');
+  /** What the backend reported after regenerating. Shown until the next edit. */
+  const [regen, setRegen] = useState<{ message: string; ran?: boolean } | null>(null);
   const [saving, setSaving] = useState(false);
 
   /**
@@ -68,7 +71,8 @@ export function PersonalDetailsCard({ client, clientId, onSaved }: {
     setDob(client?.date_of_birth ? String(client.date_of_birth).slice(0, 10) : '');
     setVat(client?.vat_number || '');
     setPaye(client?.paye_reference || '');
-    setErr(null); setErrNino(null); setErrDob(null); setDupe(null); setEdit(true);
+    setMtdStatus(client?.mtd_status ?? '');
+    setErr(null); setErrNino(null); setErrDob(null); setDupe(null); setRegen(null); setEdit(true);
   };
 
   const save = async () => {
@@ -76,15 +80,27 @@ export function PersonalDetailsCard({ client, clientId, onSaved }: {
     const dErr = validateDob(dob);   setErrDob(dErr);
     if (nErr || dErr) { setErr(null); return; }
 
-    const body = {
+    const body: Record<string, unknown> = {
       nino: normaliseNino(nino) || null,
       date_of_birth: dob || null,
       vat_number: vat.trim() || null,
       paye_reference: paye.trim() || null,
+      // '' means "not set" — the column is nullable and NULL is a real state
+      // (nobody has decided), distinct from 'not-enrolled' (someone decided).
+      mtd_status: mtdStatus === '' ? null : mtdStatus,
     };
     setSaving(true); setErr(null);
     try {
-      await patchClient(id, body);
+      const res = await patchClient(id, body);
+      /**
+       * ⛔ THE OUTCOME IS SHOWN, NOT ASSUMED. Changing enrolment regenerates the
+       * client's statutory obligations server-side, and the commonest result for
+       * a real client is ZERO new quarters — because MTD_QUARTERLY is generated
+       * per business source and most clients have none linked. A save that looks
+       * identical whether it created four obligations or none is the defect this
+       * message exists to prevent.
+       */
+      if (res?.regeneration?.message) setRegen(res.regeneration);
       // Repaint the card and the header at once — the shared SWR entry, same
       // approach the CRN/UTR fields use. The refetch stays authoritative.
       await mutate(`/brain/clients/${id}`,
@@ -114,6 +130,16 @@ export function PersonalDetailsCard({ client, clientId, onSaved }: {
           </button>
         )}
       </div>
+
+      {regen && (
+        <div className={`mb-4 flex items-start gap-2 p-3 rounded-lg border text-sm ${
+          regen.ran === false
+            ? 'border-amber-200 bg-amber-50 text-amber-900'
+            : 'border-blue-200 bg-blue-50 text-blue-900'}`}>
+          <ShieldCheck size={15} className="shrink-0 mt-0.5" />
+          <span>{regen.message}</span>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-8 text-sm">
         {edit ? (
@@ -150,6 +176,21 @@ export function PersonalDetailsCard({ client, clientId, onSaved }: {
               <label className="text-slate-500 text-xs block">PAYE reference</label>
               <input value={paye} onChange={(e) => setPaye(e.target.value)} placeholder="123/AB456" className={inputCls} spellCheck={false} />
             </div>
+            <div className="space-y-1">
+              <label className="text-slate-500 text-xs block">MTD status</label>
+              <select value={mtdStatus} onChange={(e) => setMtdStatus(e.target.value)} className={inputCls}>
+                {/* '' is NOT a fifth status — it is the absence of one, and the
+                    column is nullable so it round-trips honestly. */}
+                <option value="">Not set</option>
+                <option value="mandated">Mandated</option>
+                <option value="voluntary">Voluntary</option>
+                <option value="not-enrolled">Not enrolled</option>
+                <option value="exempt">Exempt</option>
+              </select>
+              <p className="text-[11px] text-slate-400">
+                Changing this regenerates the client's quarterly obligations.
+              </p>
+            </div>
             <div className="col-span-1 md:col-span-2 flex items-center gap-2 pt-1">
               <button onClick={save} disabled={saving}
                 className="text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded disabled:opacity-40 inline-flex items-center gap-1">
@@ -178,7 +219,13 @@ export function PersonalDetailsCard({ client, clientId, onSaved }: {
           <span className="text-slate-500 text-xs block mb-1 flex items-center gap-1">
             <ShieldCheck size={12} className="text-slate-400" /> MTD status
           </span>
-          <span className="text-slate-800">{client?.mtd_status || <span className="text-slate-400">Not enrolled</span>}</span>
+          {/* ⚠️ "Not set" — NOT "Not enrolled". NULL means nobody has decided;
+              'not-enrolled' means someone did. This read "Not enrolled" for both. */}
+          <span className="text-slate-800">
+            {client?.mtd_status
+              ? String(client.mtd_status).replace(/-/g, ' ').replace(/^\w/, (m: string) => m.toUpperCase())
+              : <span className="text-slate-400">Not set</span>}
+          </span>
         </div>
         <div>
           <span className="text-slate-500 text-xs block mb-1">VAT registered</span>

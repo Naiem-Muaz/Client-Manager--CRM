@@ -183,6 +183,22 @@ console.log('\n── the MTD board shows all four recorded statuses ──');
   eq(mtd.includes("No MTD status recorded"), true, 'unrecorded is labelled distinctly');
 }
 
+console.log('\n── MTD enrolment is settable, and the outcome is shown ──');
+{
+  const { readFileSync } = await import('node:fs');
+  const card = readFileSync('src/components/clients/PersonalDetailsCard.tsx', 'utf8');
+  for (const v of ['mandated', 'voluntary', 'not-enrolled', 'exempt'])
+    eq(card.includes(`value="${v}"`), true, `${v} is offered`);
+  eq(card.includes('<option value="">Not set</option>'), true, '"Not set" is offered as the absence of a status');
+  eq(card.includes("mtd_status: mtdStatus === '' ? null : mtdStatus"), true, 'empty saves as NULL, not an empty string');
+  eq(card.includes('res?.regeneration?.message'), true, '⛔ the regeneration outcome is read from the response');
+  eq(card.includes('setRegen('), true, 'and shown, rather than assumed');
+  eq(card.includes("regen.ran === false"), true, 'a failed regeneration is styled differently from a successful one');
+  // The read-only strip must not call NULL "Not enrolled".
+  eq(/Not enrolled<\/span>\s*\}/.test(card.replace(/\s+/g, ' ')), false,
+     '⛔ an unset status no longer reads "Not enrolled"');
+}
+
 console.log('\n── the Overview three-column row has no fixed height ──');
 {
   const { readFileSync } = await import('node:fs');
