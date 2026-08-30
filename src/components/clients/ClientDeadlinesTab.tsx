@@ -7,6 +7,7 @@ import {
   Deadline, DeadlineStatus, formatDateOnly, formatPeriod, daysPill, groupByAuthority,
   AUTHORITY_LABELS, STATUS_LABELS, STATUS_ORDER, COMPLETED_STATUSES, reasonMeta, reasonNavTab,
 } from '../../lib/deadlines';
+import { FiledExternallyDialog } from './FiledExternallyDialog';
 
 const AUTHORITY_ICON: Record<string, React.ReactNode> = {
   companies_house: <Building2 size={16} className="text-indigo-500" />,
@@ -28,6 +29,8 @@ export function ClientDeadlinesTab({ clientId, onNavigate }: { clientId: string;
     () => deadlines.filter((d) => !COMPLETED_STATUSES.includes(d.status)).sort((a, b) => a.statutory_due_date.localeCompare(b.statutory_due_date))[0],
     [deadlines],
   );
+
+  const [filingFor, setFilingFor] = useState<Deadline | null>(null);
 
   async function changeStatus(d: Deadline, status: DeadlineStatus) {
     if (status === d.status) return;
@@ -145,6 +148,24 @@ export function ClientDeadlinesTab({ clientId, onNavigate }: { clientId: string;
                             >
                               {STATUS_ORDER.map((s) => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
                             </select>
+                            {/* ⛔ A SEPARATE ACTION, NOT A STATUS OPTION. Setting
+                                "Filed" from this dropdown records that the obligation
+                                is met but says nothing about WHO filed it — and this
+                                platform has no HMRC connection, so for an MTD quarter
+                                the answer is always "another system". Naming it is
+                                the whole point. */}
+                            {(d as any).filed_externally_via ? (
+                              <span className="ml-2 text-[11px] text-emerald-700"
+                                    title={`Filed ${(d as any).filed_externally_on ?? ''}`}>
+                                Filed externally — {(d as any).filed_externally_via}
+                              </span>
+                            ) : (
+                              <button onClick={() => setFilingFor(d)}
+                                className="ml-2 text-[11px] font-medium text-blue-600 hover:text-blue-800"
+                                title="Record that this was filed with other software">
+                                Filed elsewhere…
+                              </button>
+                            )}
                             {savingId === d.id && <Loader2 size={13} className="animate-spin text-slate-400" />}
                             {COMPLETED_STATUSES.includes(d.status) && savingId !== d.id && <CheckCircle2 size={14} className="text-emerald-500" />}
                           </div>
@@ -168,6 +189,14 @@ export function ClientDeadlinesTab({ clientId, onNavigate }: { clientId: string;
         <div className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-lg shadow-lg text-sm font-medium text-white ${toast.type === 'success' ? 'bg-emerald-600' : 'bg-red-600'}`}>
           {toast.msg}
         </div>
+      )}
+      {filingFor && (
+        <FiledExternallyDialog
+          clientId={clientId}
+          deadline={filingFor as any}
+          onClose={() => setFilingFor(null)}
+          onDone={() => mutate()}
+        />
       )}
     </div>
   );

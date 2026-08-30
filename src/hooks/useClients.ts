@@ -303,3 +303,20 @@ export async function removeIncomeSource(clientId: string, sourceId: string) {
   refreshSources(clientId);
   return res.data;
 }
+
+// ── External filing (D-slice 4C) ─────────────────────────────────────────────
+export async function markFiledExternally(
+  clientId: string, deadlineId: string, body: { filed_externally_via: string; filed_externally_on?: string },
+) {
+  const res = await NextGenAPI.post(`/brain/clients/${clientId}/deadlines/${deadlineId}/file-externally`, body);
+  mutate(`/clients/${clientId}/deadlines`);
+  return res.data;
+}
+
+export async function reverseExternalFiling(clientId: string, deadlineId: string, reason?: string) {
+  const res = await NextGenAPI.delete(`/brain/clients/${clientId}/deadlines/${deadlineId}/file-externally`, {
+    data: { reason },
+  });
+  mutate(`/clients/${clientId}/deadlines`);
+  return res.data;
+}
