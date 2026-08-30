@@ -1,6 +1,7 @@
 import React from 'react';
 import { Search, Bell, AlertTriangle, Sparkles, AlertCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { GlobalSearch } from './GlobalSearch';
 import { roleLabel, initials } from '../../lib/userDisplay';
 
 export function TopBar() {
@@ -19,15 +20,10 @@ export function TopBar() {
         {/* Right: Actions & User */}
         <div className="flex items-center gap-4">
             
-            {/* Global Search */}
-            <div className="relative w-72">
-                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                <input 
-                    type="text" 
-                    placeholder="Search Client, UTR, CRN..." 
-                    className="w-full pl-9 pr-4 py-1.5 bg-bg-main border border-divider rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-secondary/20 focus:border-brand-secondary transition-all text-sm text-slate-700"
-                />
-            </div>
+            {/* Global Search — see GlobalSearch.tsx. The input that was
+                here had no value, no onChange and no endpoint: decorative
+                markup behind a placeholder that promised a search. */}
+            <GlobalSearch />
 
             <div className="h-6 w-px bg-divider mx-1"></div>
 

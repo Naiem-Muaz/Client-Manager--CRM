@@ -143,6 +143,34 @@ console.log('\n── the reference column shows the practice code, not a tax re
   eq(profile.includes('>UTR<') || profile.includes('UTR '), true, 'UTR keeps its own label');
 }
 
+console.log('\n── the global search is wired, and the MTD page is honest ──');
+{
+  const { readFileSync } = await import('node:fs');
+  const strip = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
+                        .split('\n').filter((l) => !l.trimStart().startsWith('//')).join('\n');
+  const top    = strip(readFileSync('src/components/layout/TopBar.tsx', 'utf8'));
+  const search = strip(readFileSync('src/components/layout/GlobalSearch.tsx', 'utf8'));
+  const mtd    = strip(readFileSync('src/pages/MTDCommandCentre.tsx', 'utf8'));
+
+  eq(top.includes('<GlobalSearch />'), true, 'TopBar renders the real search');
+  eq(/placeholder="Search Client, UTR, CRN\.\.\."[\s\S]{0,120}\/>/.test(top), false,
+     '⛔ the handler-less decorative input is gone from TopBar');
+  eq(search.includes('onChange='), true, 'the input is controlled');
+  eq(search.includes("NextGenAPI.get('/brain/clients'"), true, 'it calls the server, not a local filter');
+  eq(search.includes('params: { search: term }'), true, 'it sends ?search=');
+  eq(search.includes('setTimeout'), true, 'it debounces');
+  eq(search.includes('mine !== seq.current'), true, '⛔ out-of-order responses are discarded');
+  eq(search.includes("navigate(`/clients/${id}`)"), true, 'a result navigates to the client');
+
+  eq(mtd.includes('pulled direct from HMRC'), false,
+     '⛔ the false provenance claim is gone');
+  eq(mtd.includes('derived from the ITSA calendar'), true, 'the subtitle says where the dates come from');
+  eq(mtd.includes('Not connected to HMRC'), true, 'the not-connected state is visible, not just a tile');
+  eq(mtd.includes("'Total Enrolled'"), false, '⛔ the tile no longer claims enrolment');
+  eq(mtd.includes("'Individuals & Sole Traders'"), true, 'the tile names what it counts');
+  eq(mtd.includes("'Refresh from HMRC'"), false, 'the button no longer names a system it cannot reach');
+}
+
 console.log('\n── the Overview three-column row has no fixed height ──');
 {
   const { readFileSync } = await import('node:fs');

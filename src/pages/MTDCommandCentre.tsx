@@ -235,7 +235,7 @@ export function MTDCommandCentre() {
             MTD Compliance Command Centre
           </h1>
           <p className="text-slate-500 mt-1 text-sm">
-            Live HMRC obligation status for all MTD-enrolled clients — pulled direct from HMRC, not manually entered.
+            Quarterly obligation dates for individuals and sole traders, derived from the ITSA calendar and tracked by the practice.
           </p>
         </div>
         <button
@@ -244,14 +244,32 @@ export function MTDCommandCentre() {
           className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 hover:border-slate-300 transition-all text-sm font-medium shadow-sm disabled:opacity-50 whitespace-nowrap self-start"
         >
           <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} />
-          {refreshing ? 'Refreshing…' : 'Refresh from HMRC'}
+          {refreshing ? 'Refreshing…' : 'Refresh'}
         </button>
       </div>
+
+      {/* ⛔ THE PLATFORM-LEVEL STATE, SAID ONCE AND VISIBLY.
+          The "No Auth Link" tile counted 153 of 153 and nobody read it as
+          "this platform has never been connected to HMRC" — a number in a tile
+          reads as a workload, not a system state. This banner says it in
+          words, and disappears on its own the moment any client has a link. */}
+      {counts.total > 0 && counts.notLinked === counts.total && (
+        <div className="flex items-start gap-3 p-4 rounded-xl border border-amber-200 bg-amber-50">
+          <WifiOff size={18} className="text-amber-600 shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <p className="font-semibold text-amber-900">Not connected to HMRC</p>
+            <p className="text-amber-800 mt-0.5">
+              No client has an HMRC authorisation link, so nothing on this page comes from HMRC.
+              Due dates are calculated from the ITSA calendar; filed status is whatever the practice has recorded.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* ── KPI strip ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
-          { label: 'Total Enrolled', value: counts.total,     cls: 'border-slate-200' },
+          { label: 'Individuals & Sole Traders', value: counts.total, cls: 'border-slate-200' },
           { label: 'Overdue',        value: counts.overdue,   cls: 'border-red-200 bg-red-50' },
           { label: 'Open',           value: counts.open,      cls: 'border-amber-200 bg-amber-50' },
           { label: 'No Auth Link',   value: counts.notLinked, cls: 'border-slate-200 bg-slate-50' },
