@@ -262,3 +262,44 @@ export async function removeClientRelationship(clientId: string, relId: string) 
   mutate(`/brain/clients/${clientId}/relationships`);
   return res.data;
 }
+
+// ── Income sources (D-slice 3) ───────────────────────────────────────────────
+export interface IncomeSource {
+  id: string;
+  trading_name: string;
+  source_type: string;
+  status: string | null;
+  accounting_method: string | null;
+  estimated_turnover: number | null;
+  created_via: string;
+  linked_to_entity: boolean;
+}
+
+export function useIncomeSources(clientId: string | undefined) {
+  const { data, error, isLoading } = useSWR(
+    clientId ? `/brain/clients/${clientId}/income-sources` : null, fetcher);
+  return { sources: (data ?? []) as IncomeSource[], isLoading, isError: error };
+}
+
+const refreshSources = (clientId: string) => {
+  mutate(`/brain/clients/${clientId}/income-sources`);
+  mutate(`/brain/clients/${clientId}`);
+};
+
+export async function addIncomeSource(clientId: string, body: Record<string, unknown>) {
+  const res = await NextGenAPI.post(`/brain/clients/${clientId}/income-sources`, body);
+  refreshSources(clientId);
+  return res.data;
+}
+
+export async function updateIncomeSource(clientId: string, sourceId: string, body: Record<string, unknown>) {
+  const res = await NextGenAPI.patch(`/brain/clients/${clientId}/income-sources/${sourceId}`, body);
+  refreshSources(clientId);
+  return res.data;
+}
+
+export async function removeIncomeSource(clientId: string, sourceId: string) {
+  const res = await NextGenAPI.delete(`/brain/clients/${clientId}/income-sources/${sourceId}`);
+  refreshSources(clientId);
+  return res.data;
+}

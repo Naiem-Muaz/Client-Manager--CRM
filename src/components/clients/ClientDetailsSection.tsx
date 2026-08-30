@@ -3,6 +3,7 @@ import { HelpCircle } from 'lucide-react';
 import { entityKey, ENTITY_META, CH_REGISTERED, PERSONAL } from '../../lib/entityType';
 import { CompaniesHousePanel } from './CompaniesHousePanel';
 import { PersonalDetailsCard } from './PersonalDetailsCard';
+import { IncomeSourcesSection } from './IncomeSourcesSection';
 
 /**
  * ── THE DETAILS SWITCH ──────────────────────────────────────────────────────
@@ -57,7 +58,14 @@ export function ClientDetailsSection({ client, clientId, onUpdated, onLinkOffice
   }
 
   if (PERSONAL.has(ek)) {
-    return <PersonalDetailsCard client={client} clientId={clientId} onSaved={onUpdated} />;
+    // Income sources sit with Personal Details: they are what decides whether an
+    // enrolled individual or sole trader has anything to file.
+    return (
+      <div className="space-y-6">
+        <PersonalDetailsCard client={client} clientId={clientId} onSaved={onUpdated} />
+        <IncomeSourcesSection clientId={clientId} />
+      </div>
+    );
   }
 
   /**
