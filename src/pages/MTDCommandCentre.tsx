@@ -67,14 +67,40 @@ function AuthBadge({ status, clientId }: { status: MTDClientRow['agent_auth_stat
   );
 }
 
+/**
+ * ── ALL FOUR STATUSES, NOT TWO ──────────────────────────────────────────────
+ *
+ * ⛔ THIS RENDERED ONLY 'mandated' AND 'voluntary'. Everything else fell through
+ * to an em dash — so `exempt` and `not-enrolled`, which are RECORDED DECISIONS,
+ * displayed identically to NULL, which is the absence of one. Eight clients
+ * looked statusless on the board while the database held an answer for each.
+ *
+ * The distinction matters in opposite directions: "exempt" means someone
+ * established this client is out of scope, "not enrolled" means someone
+ * established they are in scope but not signed up, and "—" means nobody has
+ * looked. Only the last is a job to do.
+ *
+ * The four values are the CHECK on client_manager.clients.mtd_status:
+ * mandated · voluntary · not-enrolled · exempt.
+ */
+const MTD_STATUS_META: Record<string, { label: string; cls: string }> = {
+  mandated:       { label: 'Mandated',     cls: 'bg-blue-100 text-blue-700 border-blue-200' },
+  voluntary:      { label: 'Voluntary',    cls: 'bg-purple-100 text-purple-700 border-purple-200' },
+  'not-enrolled': { label: 'Not enrolled', cls: 'bg-slate-100 text-slate-600 border-slate-200' },
+  exempt:         { label: 'Exempt',       cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+};
+
 function MTDStatusBadge({ status }: { status: MTDClientRow['mtd_status'] }) {
-  if (status === 'mandated') {
-    return <span className="px-2 py-0.5 rounded text-xs font-bold bg-blue-100 text-blue-700 border border-blue-200 uppercase tracking-wide">Mandated</span>;
+  const meta = status ? MTD_STATUS_META[status] : undefined;
+  if (!meta) {
+    // Genuinely unrecorded — nobody has decided. Distinct from all four above.
+    return <span className="text-slate-400 text-xs" title="No MTD status recorded">Not set</span>;
   }
-  if (status === 'voluntary') {
-    return <span className="px-2 py-0.5 rounded text-xs font-bold bg-purple-100 text-purple-700 border border-purple-200 uppercase tracking-wide">Voluntary</span>;
-  }
-  return <span className="text-slate-400 text-xs">—</span>;
+  return (
+    <span className={`px-2 py-0.5 rounded text-xs font-bold border uppercase tracking-wide ${meta.cls}`}>
+      {meta.label}
+    </span>
+  );
 }
 
 function DeadlineDays({ days }: { days: number | null }) {

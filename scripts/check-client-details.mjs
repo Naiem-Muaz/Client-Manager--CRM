@@ -171,6 +171,18 @@ console.log('\n── the global search is wired, and the MTD page is honest ─
   eq(mtd.includes("'Refresh from HMRC'"), false, 'the button no longer names a system it cannot reach');
 }
 
+console.log('\n── the MTD board shows all four recorded statuses ──');
+{
+  const { readFileSync } = await import('node:fs');
+  const mtd = readFileSync('src/pages/MTDCommandCentre.tsx', 'utf8');
+  for (const st of ['mandated', 'voluntary', "'not-enrolled'", 'exempt'])
+    eq(mtd.includes(st), true, `${st} has a rendering`);
+  eq(mtd.includes("label: 'Not enrolled'"), true, 'not-enrolled reads as a decision, not a blank');
+  eq(mtd.includes("label: 'Exempt'"), true, 'exempt reads as a decision');
+  // ⛔ An unrecorded status must NOT look like a recorded one.
+  eq(mtd.includes("No MTD status recorded"), true, 'unrecorded is labelled distinctly');
+}
+
 console.log('\n── the Overview three-column row has no fixed height ──');
 {
   const { readFileSync } = await import('node:fs');
