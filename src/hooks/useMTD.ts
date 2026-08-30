@@ -6,7 +6,16 @@ export interface MTDClientRow {
   client_name: string;
   entity_type: 'Company' | 'Individual' | 'Partnership' | string;
   income_band: string | null;
-  mtd_status: 'mandated' | 'voluntary' | 'unknown';
+  /**
+   * All four recorded values, plus null for "nobody has decided". The backend
+   * used to collapse everything but mandated/voluntary to 'unknown', which made
+   * a recorded `exempt` indistinguishable from an absent status.
+   */
+  mtd_status: 'mandated' | 'voluntary' | 'not-enrolled' | 'exempt' | null;
+  /** 'calculated' (our ITSA derivation) or 'hmrc' once an overlay exists. */
+  obligation_source?: string | null;
+  next_obligation_period_start?: string | null;
+  next_obligation_period_end?: string | null;
   next_obligation_due: string | null;
   obligation_status: 'open' | 'fulfilled' | 'overdue' | 'no_obligation';
   submission_stage: string;

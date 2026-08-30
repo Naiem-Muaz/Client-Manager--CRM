@@ -83,6 +83,28 @@ function AuthBadge({ status, clientId }: { status: MTDClientRow['agent_auth_stat
  * The four values are the CHECK on client_manager.clients.mtd_status:
  * mandated · voluntary · not-enrolled · exempt.
  */
+/**
+ * ── WHERE A DUE DATE CAME FROM ──────────────────────────────────────────────
+ *
+ * Every row is 'calculated' today: derived from the ITSA calendar by this
+ * platform, not fetched from HMRC. The badge exists so the day an HMRC-sourced
+ * row appears, the difference is visible on the row rather than implied by a
+ * page-level sentence that may have scrolled away.
+ */
+function SourceBadge({ source }: { source?: string | null }) {
+  if (!source) return <span className="text-slate-300 text-xs">—</span>;
+  const hmrc = source === 'hmrc';
+  return (
+    <span
+      title={hmrc ? 'Fetched from HMRC' : 'Calculated by this platform from the ITSA calendar — not from HMRC'}
+      className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border uppercase tracking-wide ${
+        hmrc ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+             : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+      {hmrc ? 'HMRC' : 'Calculated'}
+    </span>
+  );
+}
+
 const MTD_STATUS_META: Record<string, { label: string; cls: string }> = {
   mandated:       { label: 'Mandated',     cls: 'bg-blue-100 text-blue-700 border-blue-200' },
   voluntary:      { label: 'Voluntary',    cls: 'bg-purple-100 text-purple-700 border-purple-200' },
@@ -464,7 +486,11 @@ export function MTDCommandCentre() {
 
                     {/* Obligation status */}
                     <td className="px-5 py-4">
-                      <ObligationBadge status={client.obligation_status} />
+                      <div className="flex items-center gap-1.5">
+                        <ObligationBadge status={client.obligation_status} />
+                        {/* The provenance of the date beside it — see SourceBadge. */}
+                        <SourceBadge source={client.obligation_source} />
+                      </div>
                     </td>
 
                     {/* Submission stage */}
