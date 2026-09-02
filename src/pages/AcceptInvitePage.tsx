@@ -19,12 +19,14 @@ export function AcceptInvitePage() {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
+  const [info, setInfo] = useState('');                // a TRUE, non-failing ending (e.g. link already used)
   const [offerLogin, setOfferLogin] = useState(false); // show a "Go to login" affordance
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setInfo('');
     setOfferLogin(false);
 
     // Client-side validation mirrors the backend (>= 8 chars) plus a match check.
@@ -35,6 +37,20 @@ export function AcceptInvitePage() {
     try {
       // 1. Accept the invitation → creates auth_core.user_profiles (org + role from the invite).
       const acceptRes = await NextGenAPI.post('/brain/team/accept-invite', { token, password, fullName });
+
+      // A LINK CLICKED TWICE IS NOT A FAILED FLOW. People open the invitation on
+      // the phone and again on the laptop, and some mail clients pre-fetch the
+      // link and spend it before anyone touches it. The backend answers 200 with
+      // this flag (and writes nothing, so the original accepted_at stands), so
+      // the honest ending is "your account exists, go and sign in" — not the red
+      // error box this used to show with no way forward.
+      if (acceptRes.data?.data?.alreadyAccepted) {
+        setIsLoading(false);
+        setInfo(acceptRes.data?.message || 'This invitation has already been used. Your account exists — please sign in.');
+        setOfferLogin(true);
+        return;
+      }
+
       const email = acceptRes.data?.data?.email;
       if (!acceptRes.data?.success || !email) {
         throw { error: acceptRes.data?.error || 'Could not accept the invitation.' };
@@ -64,7 +80,7 @@ export function AcceptInvitePage() {
         'Could not accept the invitation. The link may be invalid or expired.';
       setError(msg);
       // 409 "already exists" → offer a route to login instead.
-      if (/already exists/i.test(msg)) setOfferLogin(true);
+      if (/already exists|already been used/i.test(msg)) setOfferLogin(true);
       setIsLoading(false);
     }
   };
@@ -116,6 +132,11 @@ export function AcceptInvitePage() {
       {error && (
         <div className="bg-red-50 text-red-700 p-3 rounded-md text-sm cursor-text">
           {error}
+        </div>
+      )}
+      {info && (
+        <div className="bg-blue-50 text-blue-800 p-3 rounded-md text-sm cursor-text">
+          {info}
         </div>
       )}
 

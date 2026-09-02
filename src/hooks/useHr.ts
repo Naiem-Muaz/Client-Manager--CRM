@@ -6,7 +6,7 @@ import { NextGenAPI } from '../api/NextGenAPI';
 const BASE = '/brain/hr';
 const fetcher = (url: string) => NextGenAPI.get(url).then(r => r.data.data ?? r.data);
 
-export interface AttendanceSegment { id: string; work_date: string; clock_in_at: string; clock_out_at: string | null; source: string; worked_minutes: number | null; email?: string; user_id: string; }
+export interface AttendanceSegment { id: string; work_date: string; clock_in_at: string; clock_out_at: string | null; source: string; worked_minutes: number | null; email?: string; display_name?: string | null; user_id: string; }
 export interface MyAttendance { date: string; segments: AttendanceSegment[]; isClockedIn: boolean; totalMinutes: number; }
 
 // ── attendance: self ─────────────────────────────────────────────────────────
@@ -33,7 +33,7 @@ export async function closeSegment(id: string, clockOutAt?: string) {
 }
 
 // ── leave (chunk 2) ──────────────────────────────────────────────────────────
-export interface LeaveRequest { id: string; user_id: string; start_date: string; end_date: string; leave_type: string; status: string; half_day: boolean; reason?: string; approved_by?: string; email?: string; }
+export interface LeaveRequest { id: string; user_id: string; start_date: string; end_date: string; leave_type: string; status: string; half_day: boolean; reason?: string; approved_by?: string; email?: string; display_name?: string | null; }
 export function useMyLeave() {
   const { data, error, isLoading, mutate } = useSWR<LeaveRequest[]>(`${BASE}/leave/me`, fetcher);
   return { leave: (data || []) as LeaveRequest[], isLoading, isError: error, mutate };

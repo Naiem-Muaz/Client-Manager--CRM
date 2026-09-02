@@ -226,5 +226,22 @@ console.log('\n── the Overview three-column row has no fixed height ──')
   eq(emptyStates.every((b) => b.includes('p-6')), true, 'all three empty states share the compact p-6 box');
 }
 
+// ── WHO IS CLOCKED IN ───────────────────────────────────────────────────────
+// The attendance surface could say HOW MANY staff were clocked in but not WHO:
+// it printed `email` and called that the person, and the backend never selected
+// display_name. These assert the label the row now carries.
+console.log('\n── staffName / staffSubtitle ──');
+eq(m.staffName({ display_name: 'John Umar', email: 'luminatest2@gmail.com' }), 'John Umar', 'the name wins over the address');
+eq(m.staffSubtitle({ display_name: 'John Umar', email: 'luminatest2@gmail.com' }), 'luminatest2@gmail.com',
+   'the address stays as the second line — two staff can share a name');
+eq(m.staffName({ display_name: null, email: 'info@taxxdigital.co.uk' }), 'info@taxxdigital.co.uk', 'falls back to the address');
+eq(m.staffSubtitle({ display_name: null, email: 'info@taxxdigital.co.uk' }), '',
+   'no second line when the address IS the label — never print it twice');
+eq(m.staffName({ display_name: '   ', email: 'a@b.c' }), 'a@b.c', 'a whitespace-only name is not a name');
+eq(m.staffSubtitle({ display_name: '   ', email: 'a@b.c' }), '', 'nor does it earn a subtitle');
+eq(m.staffName({}), 'Unknown user', '⛔ never renders blank — a nameless row must say so out loud');
+eq(m.staffName(null), 'Unknown user', 'and survives a missing row');
+eq(m.staffName({ display_name: 'Md Mizanur Rahman', email: null }), 'Md Mizanur Rahman', 'name alone is enough');
+
 console.log(`\n${fail ? '✗' : '✓'} ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

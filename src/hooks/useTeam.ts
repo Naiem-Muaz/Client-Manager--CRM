@@ -12,6 +12,18 @@ export interface TeamMember {
   jobTitle?: string | null;   // free-text HR label (e.g. "System Designer"); distinct from `role`
   active: boolean;
   status?: 'active' | 'pending';
+  /**
+   * For a `status: 'pending'` row, what is actually TRUE of the invitation.
+   * The backend reads the invite WITH the account that may already exist, so
+   * "Pending" stops being the only thing this screen can say:
+   *   live      — sent, unexpired, nobody has signed up yet
+   *   expired   — past its 7-day window; the emailed link no longer works
+   *   unusable  — a legacy row with no token, so no link can ever match it
+   *   signed_up — they DO have an account (public signup), but no staff role
+   *               was granted, so the invitation is still outstanding
+   */
+  inviteState?: 'live' | 'expired' | 'unusable' | 'signed_up';
+  accountExists?: boolean;
   agentCode?: string | null;
   jobCount?: number;
   avatarInitial?: string;

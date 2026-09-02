@@ -2,12 +2,12 @@ import React, { useState } from 'react';
 import { Users, Clock, LogOut, Loader2, AlertTriangle } from 'lucide-react';
 import { useTeamAttendance, useOpenAttendance, closeSegment, AttendanceSegment } from '../../hooks/useHr';
 import { errMsg } from '../../lib/errMsg';
-import { fmtMins, fmtTime, minsSince } from './format';
+import { fmtMins, fmtTime, minsSince, staffName, staffSubtitle } from './format';
 import { ViewHeader, EmptyState, TableCard, th, td, Avatar } from '../sponsor/ui';
 
 const STALE_HOURS = 12; // open longer than this ⇒ likely a forgotten clock-out
 
-interface Row { userId: string; email: string; segments: AttendanceSegment[]; firstIn: string; lastOut: string | null; minutes: number; isIn: boolean; }
+interface Row { userId: string; name: string; email: string; segments: AttendanceSegment[]; firstIn: string; lastOut: string | null; minutes: number; isIn: boolean; }
 function rollup(segs: AttendanceSegment[]): Row[] {
   const by = new Map<string, AttendanceSegment[]>();
   for (const s of segs) { const a = by.get(s.user_id) || []; a.push(s); by.set(s.user_id, a); }
@@ -16,9 +16,9 @@ function rollup(segs: AttendanceSegment[]): Row[] {
     list.sort((a, b) => a.clock_in_at.localeCompare(b.clock_in_at));
     const open = list.find(s => !s.clock_out_at);
     const minutes = list.reduce((m, s) => m + (s.clock_out_at ? (s.worked_minutes || 0) : minsSince(s.clock_in_at)), 0);
-    rows.push({ userId, email: list[0].email || userId.slice(0, 8), segments: list, firstIn: list[0].clock_in_at, lastOut: open ? null : list[list.length - 1].clock_out_at, minutes, isIn: !!open });
+    rows.push({ userId, name: staffName(list[0]), email: staffSubtitle(list[0]), segments: list, firstIn: list[0].clock_in_at, lastOut: open ? null : list[list.length - 1].clock_out_at, minutes, isIn: !!open });
   }
-  return rows.sort((a, b) => Number(b.isIn) - Number(a.isIn) || a.email.localeCompare(b.email));
+  return rows.sort((a, b) => Number(b.isIn) - Number(a.isIn) || a.name.localeCompare(b.name));
 }
 
 // default clock-out value for the admin control: local "now" as datetime-local string
@@ -64,9 +64,10 @@ export function TeamAttendance() {
               const stale = Number(s.open_hours) > STALE_HOURS;
               return (
                 <div key={s.id} className={`flex items-center gap-3 flex-wrap rounded-xl border px-3 py-2.5 ${stale ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-200'}`}>
-                  <Avatar name={s.email || ''} size={30} />
+                  <Avatar name={staffName(s)} size={30} />
                   <div className="min-w-0">
-                    <div className="text-sm font-medium text-[#0F1E3A] truncate">{s.email}</div>
+                    <div className="text-sm font-medium text-[#0F1E3A] truncate">{staffName(s)}</div>
+                    {staffSubtitle(s) && <div className="text-xs text-slate-400 truncate">{staffSubtitle(s)}</div>}
                     <div className="text-xs text-slate-500 tabular-nums">since {fmtTime(s.clock_in_at)} · {fmtMins(minsSince(s.clock_in_at))} open</div>
                   </div>
                   {stale && <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 bg-amber-100 border border-amber-200 rounded-full px-2 py-0.5"><AlertTriangle size={11} /> open {s.open_hours}h — forgot to clock out?</span>}
@@ -94,7 +95,9 @@ export function TeamAttendance() {
         <TableCard head={<tr><th className={th}>Staff</th><th className={th}>First in</th><th className={th}>Last out</th><th className={th}>Hours</th><th className={th}>Status</th></tr>}>
           {rows.map(r => (
             <tr key={r.userId} className="hover:bg-slate-50">
-              <td className={td}><div className="flex items-center gap-3"><Avatar name={r.email} size={34} /><span className="text-sm font-medium text-[#0F1E3A]">{r.email}</span></div></td>
+              <td className={td}><div className="flex items-center gap-3"><Avatar name={r.name} size={34} />
+                <div className="min-w-0"><div className="text-sm font-medium text-[#0F1E3A] truncate">{r.name}</div>
+                  {r.email && <div className="text-xs text-slate-400 truncate">{r.email}</div>}</div></div></td>
               <td className={`${td} tabular-nums text-slate-700`}>{fmtTime(r.firstIn)}</td>
               <td className={`${td} tabular-nums text-slate-700`}>{r.lastOut ? fmtTime(r.lastOut) : '—'}</td>
               <td className={`${td} tabular-nums font-medium text-[#0F1E3A]`}>{fmtMins(r.minutes)}</td>

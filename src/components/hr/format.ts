@@ -16,3 +16,21 @@ export const fmtDate = (v?: string | null): string =>
 export const minsSince = (iso: string): number => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000));
 
 export const prettify = (s?: string | null): string => (s ? s.replace(/[_-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '—');
+
+/**
+ * Who a clock-in / leave row belongs to.
+ *
+ * ⚠️ THE ATTENDANCE SURFACE USED TO PRINT `email` AND CALL THAT THE PERSON. It
+ * could tell you how many staff were clocked in but not who: the practice inbox
+ * shows as "info@…", and a personal alias carries no name at all. The backend
+ * always joined auth_core.user_profiles and simply never selected display_name.
+ *
+ * The address stays as the SECOND line, not as a replacement: two staff can
+ * share a display name, and the address is what disambiguates them.
+ */
+export const staffName = (r?: { display_name?: string | null; email?: string | null } | null): string =>
+  (r?.display_name || '').trim() || (r?.email || '').trim() || 'Unknown user';
+
+/** The address, only when it adds something the name did not already say. */
+export const staffSubtitle = (r?: { display_name?: string | null; email?: string | null } | null): string =>
+  (r?.display_name || '').trim() ? (r?.email || '').trim() : '';

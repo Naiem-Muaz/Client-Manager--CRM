@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { CalendarCheck, Check, X, Loader2, CalendarDays } from 'lucide-react';
 import { useLeaveRequests, approveLeave, rejectLeave, LeaveRequest } from '../../hooks/useHr';
 import { errMsg } from '../../lib/errMsg';
-import { fmtDate, prettify } from './format';
+import { fmtDate, prettify, staffName, staffSubtitle } from './format';
 import { ViewHeader, EmptyState, TableCard, th, td, Avatar } from '../sponsor/ui';
 import { leaveStatusChip } from './MyLeave';
 
@@ -37,9 +37,10 @@ export function TeamLeave() {
             <div className="space-y-2">
               {pending.map((r: LeaveRequest) => (
                 <div key={r.id} className="flex items-center gap-3 flex-wrap bg-white border border-slate-200 rounded-xl px-4 py-3">
-                  <Avatar name={r.email || ''} size={34} />
+                  <Avatar name={staffName(r)} size={34} />
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium text-[#0F1E3A] truncate">{r.email}</div>
+                    <div className="text-sm font-medium text-[#0F1E3A] truncate">{staffName(r)}</div>
+                    {staffSubtitle(r) && <div className="text-xs text-slate-400 truncate">{staffSubtitle(r)}</div>}
                     <div className="text-xs text-slate-500 tabular-nums">{fmtDate(r.start_date)} – {fmtDate(r.end_date)}{r.half_day ? ' · ½ day' : ''} · {prettify(r.leave_type)}{r.reason ? ` · ${r.reason}` : ''}</div>
                   </div>
                   <div className="flex items-center gap-2 ml-auto">
@@ -59,7 +60,9 @@ export function TeamLeave() {
           <TableCard head={<tr><th className={th}>Staff</th><th className={th}>Dates</th><th className={th}>Type</th><th className={th}>Status</th></tr>}>
             {approved.map((r: LeaveRequest) => (
               <tr key={r.id} className="hover:bg-slate-50">
-                <td className={td}><div className="flex items-center gap-3"><Avatar name={r.email || ''} size={30} /><span className="text-sm font-medium text-[#0F1E3A]">{r.email}</span></div></td>
+                <td className={td}><div className="flex items-center gap-3"><Avatar name={staffName(r)} size={30} />
+                  <div className="min-w-0"><div className="text-sm font-medium text-[#0F1E3A] truncate">{staffName(r)}</div>
+                    {staffSubtitle(r) && <div className="text-xs text-slate-400 truncate">{staffSubtitle(r)}</div>}</div></div></td>
                 <td className={`${td} tabular-nums text-slate-700`}>{fmtDate(r.start_date)} – {fmtDate(r.end_date)}{r.half_day ? ' · ½' : ''}</td>
                 <td className={`${td} text-slate-600`}>{prettify(r.leave_type)}</td>
                 <td className={td}><span className={`${chip} ${leaveStatusChip(r.status)}`}>{prettify(r.status)}</span></td>

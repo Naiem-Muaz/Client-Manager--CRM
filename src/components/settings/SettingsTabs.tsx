@@ -9,6 +9,28 @@ const initials = (name: string) =>
 
 const roleLabel = (r?: string | null) => (r || '—').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
+/**
+ * WHAT A PENDING INVITE ROW SHOULD SAY.
+ *
+ * ⚠️ THIS SCREEN SAID "Pending" FOR EVERY OPEN INVITATION, WHICH IS A CLAIM
+ * ABOUT A PERSON DERIVED FROM ONE COLUMN. An invite that expired weeks ago read
+ * "Pending". A legacy row whose link was never issued read "Pending". And
+ * someone who had already signed up — and could log in — read "Pending", with
+ * no other row on the screen, because the members query filters out role
+ * 'client' and public signup can only ever create a client.
+ *
+ * The backend now reads the invite together with the account, so each of those
+ * says what it is, and each says what to DO — which in three of the four cases
+ * is Resend, not wait.
+ */
+const INVITE_BADGE: Record<string, { label: string; className: string; hint: string }> = {
+    live:      { label: 'Invited',        className: 'bg-amber-100 text-amber-700',   hint: 'Invitation sent — waiting for them to set a password.' },
+    expired:   { label: 'Invite expired', className: 'bg-rose-100 text-rose-700',     hint: 'The link passed its 7-day window and no longer works. Resend to issue a new one.' },
+    unusable:  { label: 'Link never sent', className: 'bg-rose-100 text-rose-700',    hint: 'This invitation predates the current email flow and carries no usable link. Resend to issue one.' },
+    signed_up: { label: 'Signed up — no role', className: 'bg-sky-100 text-sky-700',  hint: 'They created an account through the public sign-up form, so they can log in as a client — but the staff role was never granted, because that only happens through the invitation link. Resend it.' },
+};
+const inviteBadge = (m: TeamMember) => INVITE_BADGE[m.inviteState || 'live'] ?? INVITE_BADGE.live;
+
 // --- Tab 1: Users & Roles ---
 export function UsersTab() {
     const { members, isLoading, mutate } = useTeamMembers();
@@ -105,7 +127,7 @@ export function UsersTab() {
                                     <td className="px-6 py-4 text-slate-600">{m.status === 'pending' ? '—' : (m.jobCount ?? 0)}</td>
                                     <td className="px-6 py-4">
                                         {m.status === 'pending'
-                                            ? <span className="px-2 py-1 bg-amber-100 text-amber-700 rounded-full text-xs font-medium">Pending</span>
+                                            ? <span title={inviteBadge(m).hint} className={`px-2 py-1 rounded-full text-xs font-medium cursor-help ${inviteBadge(m).className}`}>{inviteBadge(m).label}</span>
                                             : m.active
                                                 ? <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">Active</span>
                                                 : <span className="px-2 py-1 bg-slate-100 text-slate-500 rounded-full text-xs font-medium">Inactive</span>}
