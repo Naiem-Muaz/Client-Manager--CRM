@@ -243,5 +243,26 @@ eq(m.staffName({}), 'Unknown user', '⛔ never renders blank — a nameless row 
 eq(m.staffName(null), 'Unknown user', 'and survives a missing row');
 eq(m.staffName({ display_name: 'Md Mizanur Rahman', email: null }), 'Md Mizanur Rahman', 'name alone is enough');
 
+// ── CLOSURE IDENTITY ────────────────────────────────────────────────────────
+// The rule migration 325 exists for: a closure nobody recorded must NOT read as
+// the employee clocking herself out. Every segment closed before 325 is in that
+// state, so this is the common case, not the edge one.
+console.log('\n── closureLabel ──');
+eq(m.closureLabel({ clockOutAt: '2026-09-02T18:00:00Z', closedSource: null, closedByName: null }),
+   'Closure not recorded', '⛔ NULL closure is never a clock-out');
+eq(m.closureLabel({ clockOutAt: '2026-09-02T18:00:00Z', closedSource: 'admin', closedByName: 'Mohammad Ziaur' }),
+   'Closed by Mohammad Ziaur', 'an admin close names the admin');
+eq(m.closureLabel({ clockOutAt: '2026-09-02T18:00:00Z', closedSource: 'admin', closedByName: null }),
+   'Closed by an administrator', 'and says so even once that admin is deleted');
+eq(m.closureLabel({ clockOutAt: '2026-09-02T18:00:00Z', closedSource: 'self', closedByName: 'Umme Liba' }),
+   'Clocked out by Umme Liba', 'a real clock-out reads as one');
+eq(m.closureLabel({ clockOutAt: null, closedSource: 'admin', closedByName: 'X' }),
+   'Still open', 'an open segment is open, whatever the closure column holds');
+
+console.log('\n── practiceToday ──');
+eq(m.practiceToday(new Date('2026-07-05T23:51:16.822Z')), '2026-07-06',
+   '00:51 BST on the 6th is the 6th — the UTC date filed it to the 5th');
+eq(m.practiceToday(new Date('2026-01-15T23:51:00Z')), '2026-01-15', 'in winter there is no offset to apply');
+
 console.log(`\n${fail ? '✗' : '✓'} ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

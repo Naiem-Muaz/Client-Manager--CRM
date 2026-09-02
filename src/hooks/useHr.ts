@@ -78,3 +78,67 @@ export function useStaff() {
   return { staff: (data || []) as any[], isLoading, isError: error, mutate };
 }
 export async function setClocking(userId: string, enabled: boolean) { return (await NextGenAPI.patch(`${BASE}/staff/${userId}/clocking`, { enabled })).data; }
+
+// ── history + export (migration 325's audit arm) ─────────────────────────────
+export interface Amendment {
+  at: string; field: string | null;
+  oldValue: string | null; newValue: string | null;
+  source: string; by: string | null; byId: string | null;
+}
+export interface HistorySegment {
+  id: string; userId: string | null;
+  staffName: string; staffEmail: string | null;
+  workDate: string; clockInAt: string; clockOutAt: string | null;
+  workedMinutes: number | null;
+  source: string;
+  /** null means NOBODY RECORDED IT. It must never be rendered as a self clock-out. */
+  closedSource: 'self' | 'admin' | 'system' | null;
+  closedByName: string | null;
+  note: string | null;
+  amendments: Amendment[];
+}
+export interface AttendanceHistory {
+  from: string; to: string; userId: string | null;
+  segments: HistorySegment[];
+  totals: { segments: number; minutes: number; amended: number; closureNotRecorded: number };
+}
+
+const rangeQuery = (from: string, to: string, userId?: string | null) =>
+  `from=${from}&to=${to}${userId ? `&userId=${userId}` : ''}`;
+
+export function useAttendanceHistory(from: string, to: string, userId?: string | null) {
+  const key = from && to ? `${BASE}/attendance/history?${rangeQuery(from, to, userId)}` : null;
+  const { data, error, isLoading, mutate } = useSWR<AttendanceHistory>(key, fetcher);
+  return { history: data, loaded: data !== undefined, isLoading, error, mutate };
+}
+
+/**
+ * The CSV comes from the SERVER, not from the rows on screen. One renderer means
+ * the export and the view cannot disagree about a correction — and an export
+ * that hides corrections is worse than no export at all.
+ *
+ * axios is bypassed here because its response interceptor unwraps JSON bodies;
+ * this endpoint answers text/csv. The bearer token is read from the same store.
+ */
+export async function downloadAttendanceCsv(from: string, to: string, userId?: string | null): Promise<void> {
+  const base = (NextGenAPI.defaults.baseURL || '').replace(/\/+$/, '');
+  // Same source the axios request interceptor uses — not defaults.headers, which
+  // is only set on an explicit setAuthToken and is empty on a page that restored
+  // its session from storage.
+  const token = localStorage.getItem('lumina_token');
+  const res = await fetch(`${base}${BASE}/attendance/export?${rangeQuery(from, to, userId)}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) {
+    let msg = `Export failed (${res.status})`;
+    try { const b = await res.json(); if (b?.error) msg = String(b.error); } catch { /* not JSON */ }
+    throw new Error(msg);
+  }
+  const blob = await res.blob();
+  const name = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '')?.[1]
+    || `attendance-${from}-to-${to}.csv`;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name; a.click();
+  URL.revokeObjectURL(url);
+}

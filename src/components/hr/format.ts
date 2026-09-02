@@ -46,3 +46,25 @@ export const staffSubtitle = (r?: { display_name?: string | null; email?: string
  */
 export const practiceToday = (at: Date = new Date()): string =>
   new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London', year: 'numeric', month: '2-digit', day: '2-digit' }).format(at);
+
+/**
+ * HOW A SEGMENT ENDED — the same rule the backend's CSV export uses.
+ *
+ * ⛔ `null` is NOT "self". Every segment closed before migration 325 carries a
+ * NULL closure source, because an admin closing a forgotten shift used to leave
+ * source='self' and the record then claimed the employee clocked herself out at
+ * a time a manager typed in. Defaulting NULL to a clock-out here would restore
+ * that claim in the place people actually read.
+ *
+ * Kept as a function, not inlined in the component, so the screen and the export
+ * cannot drift — and so it can be asserted without rendering React.
+ */
+export const closureLabel = (s: { clockOutAt: string | null; closedSource: string | null; closedByName?: string | null }): string => {
+  if (!s.clockOutAt) return 'Still open';
+  switch (s.closedSource) {
+    case 'self':   return `Clocked out${s.closedByName ? ` by ${s.closedByName}` : ''}`;
+    case 'admin':  return `Closed by ${s.closedByName || 'an administrator'}`;
+    case 'system': return 'Closed automatically';
+    default:       return 'Closure not recorded';
+  }
+};

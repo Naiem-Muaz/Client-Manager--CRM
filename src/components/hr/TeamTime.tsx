@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
-import { Clock, CalendarCheck, CalendarDays } from 'lucide-react';
+import { Clock, CalendarCheck, CalendarDays, History } from 'lucide-react';
 import { TeamAttendance } from './TeamAttendance';
 import { TeamLeave } from './TeamLeave';
 import { TeamRoster } from './TeamRoster';
+import { AttendanceHistory } from './AttendanceHistory';
 
 // Super_admin "Team Attendance" tab: one tab, three sub-sections.
-type View = 'attendance' | 'leave' | 'roster';
+type View = 'attendance' | 'history' | 'leave' | 'roster';
 const NAV: { id: View; label: string; icon: any }[] = [
   { id: 'attendance', label: 'Attendance', icon: Clock },
+  { id: 'history', label: 'History & export', icon: History },
   { id: 'leave', label: 'Leave', icon: CalendarCheck },
   { id: 'roster', label: 'Roster', icon: CalendarDays },
 ];
@@ -24,7 +26,7 @@ export function TeamTime() {
           </button>
         ))}
       </div>
-      {view === 'attendance' ? <TeamAttendance /> : view === 'leave' ? <TeamLeave /> : <TeamRoster />}
+      {view === 'attendance' ? <TeamAttendance /> : view === 'history' ? <AttendanceHistory /> : view === 'leave' ? <TeamLeave /> : <TeamRoster />}
     </div>
   );
 }
