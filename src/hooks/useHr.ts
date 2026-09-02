@@ -19,14 +19,28 @@ export async function clockOut() { return (await NextGenAPI.post(`${BASE}/attend
 
 // ── attendance: super_admin team view ────────────────────────────────────────
 export function useTeamAttendance(date?: string) {
-  const { data, error, isLoading, mutate } = useSWR<AttendanceSegment[]>(`${BASE}/attendance/team${date ? `?date=${date}` : ''}`, fetcher);
-  return { segments: (data || []) as AttendanceSegment[], isLoading, isError: error, mutate };
+  // Same cadence as the open-segments panel. Without it the day view was fetched
+  // once on mount and never again, so a shift that started while the page was
+  // open never appeared — and the screen reported "No attendance for this day"
+  // about a day that had some.
+  const { data, error, isLoading, mutate } = useSWR<AttendanceSegment[]>(`${BASE}/attendance/team${date ? `?date=${date}` : ''}`, fetcher, { refreshInterval: 60_000 });
+  return { segments: (data || []) as AttendanceSegment[], loaded: data !== undefined, isLoading, isError: error, error, mutate };
 }
 // "Clocked in now" — open segments regardless of date (refreshes on an interval so
 // durations stay live). open_hours flags a likely-forgotten clock-out.
 export function useOpenAttendance() {
   const { data, error, isLoading, mutate } = useSWR<(AttendanceSegment & { open_hours: number })[]>(`${BASE}/attendance/open`, fetcher, { refreshInterval: 60_000 });
-  return { open: (data || []) as (AttendanceSegment & { open_hours: number })[], isLoading, isError: error, mutate };
+  // `open` is [] both when nobody is clocked in and when the request failed.
+  // `loaded` is the difference, and the difference is the whole bug: without it
+  // the screen states a fact it does not have.
+  return {
+    open: (data || []) as (AttendanceSegment & { open_hours: number })[],
+    loaded: data !== undefined, isLoading, isError: error, error, mutate,
+    // WHEN this answer was obtained. A list refreshed on an interval is a
+    // statement about a moment, and the moment has to be on the screen — a
+    // reading up to a minute old must not read as "right now".
+    checkedAt: data !== undefined ? Date.now() : null,
+  };
 }
 export async function closeSegment(id: string, clockOutAt?: string) {
   return (await NextGenAPI.patch(`${BASE}/attendance/${id}/close`, clockOutAt ? { clockOutAt } : {})).data;

@@ -42,6 +42,15 @@ NextGenAPI.interceptors.response.use(
       // Let the AuthContext trigger redirect by listening to token absence
       window.dispatchEvent(new Event('auth_unauthorized'));
     }
-    return Promise.reject(error.response?.data || error);
+    // Carry the STATUS through. The rejection used to be the response body alone,
+    // so every caller could see WHAT went wrong and never WHETHER it was a refusal
+    // (403) or a fault (5xx/network). Team Attendance paid for that: a 403 arrived
+    // as an empty list and the screen said "Nobody is currently clocked in."
+    // Additive — an extra key on an object callers already receive.
+    const body = error.response?.data;
+    if (body && typeof body === 'object' && !Array.isArray(body)) {
+      return Promise.reject(Object.assign({}, body, { status: error.response?.status }));
+    }
+    return Promise.reject(body ?? error);
   }
 );

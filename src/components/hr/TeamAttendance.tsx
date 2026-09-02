@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Users, Clock, LogOut, Loader2, AlertTriangle } from 'lucide-react';
 import { useTeamAttendance, useOpenAttendance, closeSegment, AttendanceSegment } from '../../hooks/useHr';
 import { errMsg } from '../../lib/errMsg';
-import { fmtMins, fmtTime, minsSince, staffName, staffSubtitle } from './format';
+import { fmtMins, fmtTime, minsSince, staffName, staffSubtitle, practiceToday } from './format';
 import { ViewHeader, EmptyState, TableCard, th, td, Avatar } from '../sponsor/ui';
 
 const STALE_HOURS = 12; // open longer than this ⇒ likely a forgotten clock-out
@@ -24,10 +24,40 @@ function rollup(segs: AttendanceSegment[]): Row[] {
 // default clock-out value for the admin control: local "now" as datetime-local string
 const localNow = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); };
 
+/**
+ * ⛔ AN EMPTY LIST IS NOT THE SAME FACT AS "NOBODY IS CLOCKED IN".
+ *
+ * Both panels here rendered `[]` as a statement about the world. The hooks
+ * discarded their error, so a 403 — which is what a session with no
+ * organisation claim, or one that is not super_admin, actually receives from
+ * /attendance/open and /attendance/team (requireRole enforces the org lock
+ * BEFORE the role check) — arrived as an empty array and the screen said
+ * "Nobody is currently clocked in" and "No attendance for this day".
+ *
+ * That is exactly how two screens came to disagree about the same person at the
+ * same moment: My Time carries no requireRole and no org predicate, so it kept
+ * working and showed the open segment, while this screen confidently reported
+ * its absence. The queries behind it were correct the whole time.
+ */
+function FetchFailure({ what, err }: { what: string; err: any }) {
+  const refused = err?.status === 403;
+  return (
+    <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-xl px-4 py-3 text-sm">
+      <div className="font-medium">Could not load {what}.</div>
+      <div className="text-amber-800 mt-0.5">
+        {refused
+          ? 'Your session is not authorised for the team view. Sign out and back in — if it persists, the account needs the super-admin role in this organisation.'
+          : errMsg(err, 'The request failed.')}
+      </div>
+      <div className="text-xs text-amber-700 mt-1.5">This is not a report that nobody is clocked in — it is a failure to find out.</div>
+    </div>
+  );
+}
+
 export function TeamAttendance() {
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const { segments, isLoading, mutate: mutateDay } = useTeamAttendance(date);
-  const { open, mutate: mutateOpen } = useOpenAttendance();      // who's in NOW, any date
+  const [date, setDate] = useState(practiceToday());
+  const { segments, isLoading, error: dayError, mutate: mutateDay } = useTeamAttendance(date);
+  const { open, loaded: openLoaded, error: openError, checkedAt, mutate: mutateOpen } = useOpenAttendance();  // who's in NOW, any date
   const rows = rollup(segments);
 
   const [closeAt, setCloseAt] = useState<Record<string, string>>({});
@@ -55,10 +85,13 @@ export function TeamAttendance() {
         <div className="flex items-center gap-2 mb-3">
           <span className="w-6 h-6 rounded-md bg-emerald-100 text-emerald-600 flex items-center justify-center"><Clock size={14} /></span>
           <h3 className="text-sm font-semibold text-[#0F1E3A]">Clocked in now</h3>
-          <span className="text-xs text-slate-400 tabular-nums">({open.length})</span>
+          {openLoaded && <span className="text-xs text-slate-400 tabular-nums">({open.length})</span>}
+          {checkedAt && <span className="text-xs text-slate-400 ml-auto tabular-nums">as at {fmtTime(new Date(checkedAt).toISOString())}</span>}
         </div>
         {error && <p className="text-sm text-rose-600 mb-2">{error}</p>}
-        {open.length === 0 ? <p className="text-sm text-slate-400">Nobody is currently clocked in.</p> : (
+        {openError ? <FetchFailure what="who is clocked in" err={openError} />
+          : !openLoaded ? <p className="text-sm text-slate-400">Checking…</p>
+          : open.length === 0 ? <p className="text-sm text-slate-400">Nobody is currently clocked in.</p> : (
           <div className="space-y-2">
             {open.map(s => {
               const stale = Number(s.open_hours) > STALE_HOURS;
@@ -87,7 +120,9 @@ export function TeamAttendance() {
       </div>
 
       {/* DAILY TABLE — hours worked on the chosen day */}
-      {isLoading ? (
+      {dayError ? (
+        <FetchFailure what="this day's attendance" err={dayError} />
+      ) : isLoading ? (
         <div className="h-32 bg-slate-100 rounded-xl animate-pulse" />
       ) : rows.length === 0 ? (
         <EmptyState icon={Users} title="No attendance for this day" hint="Pick another date, or staff haven't clocked in on this day." />

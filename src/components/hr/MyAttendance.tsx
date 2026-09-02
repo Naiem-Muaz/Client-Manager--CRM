@@ -2,11 +2,11 @@ import React, { useEffect, useState } from 'react';
 import { Clock, LogIn, LogOut, Loader2, CalendarClock } from 'lucide-react';
 import { useMyAttendance, clockIn, clockOut } from '../../hooks/useHr';
 import { errMsg } from '../../lib/errMsg';
-import { fmtMins, fmtTime, minsSince } from './format';
+import { fmtMins, fmtTime, minsSince, practiceToday } from './format';
 import { SectionCard, EmptyState } from '../sponsor/ui';
 
 export function MyAttendance() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = practiceToday();
   const { attendance, isLoading, isError, mutate } = useMyAttendance(today);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

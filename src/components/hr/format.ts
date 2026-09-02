@@ -34,3 +34,15 @@ export const staffName = (r?: { display_name?: string | null; email?: string | n
 /** The address, only when it adds something the name did not already say. */
 export const staffSubtitle = (r?: { display_name?: string | null; email?: string | null } | null): string =>
   (r?.display_name || '').trim() ? (r?.email || '').trim() : '';
+
+/**
+ * TODAY, IN THE PRACTICE'S TIMEZONE.
+ *
+ * ⚠️ `new Date().toISOString().slice(0, 10)` is the UTC date. Between 00:00 and
+ * 01:00 BST it names YESTERDAY, so the attendance day picker would open on the
+ * wrong sheet and a shift starting just after midnight would look missing. The
+ * server files work_date the same way, so both sides must agree on the same
+ * calendar — and it is the practice's, not UTC's.
+ */
+export const practiceToday = (at: Date = new Date()): string =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London', year: 'numeric', month: '2-digit', day: '2-digit' }).format(at);

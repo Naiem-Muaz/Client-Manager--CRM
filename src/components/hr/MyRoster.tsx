@@ -1,11 +1,11 @@
 import React from 'react';
 import { CalendarDays } from 'lucide-react';
 import { useMyRoster } from '../../hooks/useHr';
-import { fmtDate } from './format';
+import { fmtDate, practiceToday } from './format';
 import { SectionCard } from '../sponsor/ui';
 
 export function MyRoster() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = practiceToday();
   const { roster, isLoading, isError } = useMyRoster(today);
   // 403 (not clocking staff) — stay quiet; MyAttendance already shows the notice.
   if (isError && (isError?.response?.status === 403 || /enrolled|clocking/i.test(isError?.error || isError?.message || ''))) return null;
