@@ -40,6 +40,38 @@ const readCrn = (c: any): string =>
   c?.companyNumber && c.companyNumber !== 'undefined' ? String(c.companyNumber) : '';
 
 /**
+ * ⛔ THE YEAR END OFF THE CLIENT RECORD — day and month, never the year.
+ *
+ * `ard` arrives as an ISO date whose YEAR IS A PLACEHOLDER (2024, a leap year so
+ * a real 29 February survives the write). Reading the year and showing it would
+ * tell a client something nobody ever told us.
+ *
+ * ⚠️ Parsed off the STRING, not through `new Date()`. A date constructed from
+ * 'YYYY-MM-DD' is UTC midnight, and rendering it in a timezone behind UTC shifts
+ * it to the previous day — which would turn a 1 March year end into 28 February
+ * for anyone west of Greenwich. This codebase has paid for that once already.
+ */
+const readArd = (c: any): { day: string; month: string } => {
+  const raw = c?.ard ?? c?.yearEnd ?? null;
+  const m = typeof raw === 'string' ? raw.match(/^(\d{4})-(\d{2})-(\d{2})/) : null;
+  return m ? { day: String(Number(m[3])), month: String(Number(m[2])) } : { day: '', month: '' };
+};
+
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'];
+
+/**
+ * The days selectable for a month. ⛔ February offers 29: a leap-day year end is
+ * real — one of the companies already in this database has one — and the reader
+ * clamps to 28 in a non-leap year rather than rolling into March.
+ */
+const DAYS_IN_MONTH = (month: string): number[] => {
+  const m = Number(month);
+  const last = !m ? 31 : new Date(Date.UTC(2024, m, 0)).getUTCDate();
+  return Array.from({ length: last }, (_, i) => i + 1);
+};
+
+/**
  * ── UTR ──────────────────────────────────────────────────────────────────────
  * Exactly ten digits. Checked against production before being written: all 18
  * UTRs currently stored in client_manager.clients match `^[0-9]{10}$` and none
@@ -114,6 +146,26 @@ export function ClientProfileSection({ client, clientId, onSaved }: { client: an
     const [clientCode, setClientCode] = useState('');
     const [errCode, setErrCode] = useState<string | null>(null);
     const [companyNumber, setCompanyNumber] = useState('');
+    /**
+     * ⛔ THE COMPANY YEAR END — DAY AND MONTH ONLY, NEVER A YEAR.
+     *
+     * `clients.ard` is the Accounting Reference Date. The column is a date, so it
+     * carries a placeholder year (2024 — a LEAP year, chosen so a real 29 February
+     * year end survives being written), but only the month and day mean anything.
+     * Two selects rather than a date picker: a picker would show a year the client
+     * was never told, and free text would invite "30/11" against "11/30".
+     *
+     * ⚠️ THE CRM IS THE ONLY EDITOR. Golden rule, 2026-08-16: the client record has
+     * one home and one editor. The Lumina app DISPLAYS this and says who can
+     * correct it; a guard in the orchestrator asserts routes/lumina.ts never
+     * acquires an `ard` writer.
+     *
+     * ⚠️ AND IT IS NOT THE FIRST PERIOD. A company's first accounting period can
+     * run up to 18 months from incorporation and end on another date, so the note
+     * below says so rather than the code trying to encode it.
+     */
+    const [yeDay, setYeDay] = useState('');
+    const [yeMonth, setYeMonth] = useState('');
     const [errCrn, setErrCrn] = useState<string | null>(null);
     const [utr, setUtr] = useState('');
     const [errUtr, setErrUtr] = useState<string | null>(null);
@@ -145,6 +197,8 @@ export function ClientProfileSection({ client, clientId, onSaved }: { client: an
         setCity(client.address?.town || ''); setPostcode(client.address?.postcode || '');
         setClientCode(readClientCode(client));
         setCompanyNumber(readCrn(client));
+        const ard = readArd(client);
+        setYeDay(ard.day); setYeMonth(ard.month);
         setUtr(readUtr(client));
         setErrorD(null); setErrCode(null); setErrCrn(null); setErrUtr(null); setConfirmUtr(false); setEditD(true);
     };
@@ -169,6 +223,12 @@ export function ClientProfileSection({ client, clientId, onSaved }: { client: an
         if (codeErr || utrErr) { setErrorD(null); return; }
 
         const crn = companyNumber.trim().toUpperCase();
+        // 2024 so a 29 February year end round-trips; the readers take month and
+        // day only. Both selects set, or the field is cleared — a day without a
+        // month is not half a year end, it is nothing.
+        const ardValue = yeDay && yeMonth
+            ? `2024-${yeMonth.padStart(2, '0')}-${yeDay.padStart(2, '0')}`
+            : null;
         const nextUtr = utr.trim();
         const prevUtr = readUtr(client);
 
@@ -196,6 +256,12 @@ export function ClientProfileSection({ client, clientId, onSaved }: { client: an
                 legal_name: legalName.trim(), entity_type: entity,
                 client_reference: normaliseClientCode(clientCode),
                 company_number: crn,
+                // ⛔ `ard`, snake_case, because the PATCH allow-list at
+                // routes/brain.ts accepts nothing else and DROPS the rest
+                // silently — a save that reports success and changes nothing.
+                // null clears it; the dashboard then withholds the corporation
+                // tax provision rather than computing it over the wrong period.
+                ard: ardValue,
                 utr: nextUtr,
                 address_line1: line1.trim(), address_line2: line2.trim(), city: city.trim(), postcode: postcode.trim(),
             });
@@ -210,7 +276,7 @@ export function ClientProfileSection({ client, clientId, onSaved }: { client: an
              */
             await mutate(
                 cacheKey,
-                (cur: any) => (cur ? { ...cur, utr: nextUtr || null, companyNumber: crn || null, company_number: crn || null, client_reference: normaliseClientCode(clientCode) } : cur),
+                (cur: any) => (cur ? { ...cur, utr: nextUtr || null, companyNumber: crn || null, company_number: crn || null, ard: ardValue, client_reference: normaliseClientCode(clientCode) } : cur),
                 { revalidate: false },
             );
             setConfirmUtr(false);
@@ -285,6 +351,49 @@ export function ClientProfileSection({ client, clientId, onSaved }: { client: an
                                 />
                                 {errCrn && <p className="mt-1 text-[11px] text-red-600">{errCrn}</p>}
                             </div>
+                            {(entity === 'limited_company' || entity === 'llp') && (
+                                <div>
+                                    <label className="text-[11px] text-slate-400 block mb-0.5">Year end (accounting reference date)</label>
+                                    <div className="flex gap-2">
+                                        <select
+                                            value={yeDay}
+                                            onChange={(e) => setYeDay(e.target.value)}
+                                            className={inputCls}
+                                            aria-label="Year end day"
+                                        >
+                                            <option value="">Day</option>
+                                            {DAYS_IN_MONTH(yeMonth).map((d) => (
+                                                <option key={d} value={String(d)}>{d}</option>
+                                            ))}
+                                        </select>
+                                        <select
+                                            value={yeMonth}
+                                            onChange={(e) => {
+                                                setYeMonth(e.target.value);
+                                                // ⛔ CLAMP, DON'T SILENTLY KEEP. Switching from 31 January
+                                                // to April must not leave "31 April" selected and saveable.
+                                                const max = DAYS_IN_MONTH(e.target.value).length;
+                                                if (yeDay && Number(yeDay) > max) setYeDay(String(max));
+                                            }}
+                                            className={inputCls}
+                                            aria-label="Year end month"
+                                        >
+                                            <option value="">Month</option>
+                                            {MONTHS.map((m, i) => (
+                                                <option key={m} value={String(i + 1)}>{m}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <p className="mt-1 text-[11px] text-slate-400">
+                                        From Companies House where we have it. It sets the accounting period
+                                        the client&apos;s figures are shown against.
+                                    </p>
+                                    <p className="mt-0.5 text-[11px] text-amber-700">
+                                        A company&apos;s first accounting period can run up to 18 months and
+                                        end on a different date — check this for a recent incorporation.
+                                    </p>
+                                </div>
+                            )}
                             <div>
                                 <label className="text-[11px] text-slate-400 block mb-0.5">UTR</label>
                                 <input
