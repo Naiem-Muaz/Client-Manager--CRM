@@ -430,6 +430,32 @@ export function ClientProfileSection({ client, clientId, onSaved }: { client: an
                                     UTR <span className="font-mono text-slate-700">{readUtr(client)}</span>
                                 </div>
                             )}
+                            {/*
+                              ⛔ THE YEAR END SHOWS WHEN IT IS MISSING, WHICH IS THE
+                              WHOLE POINT. Every other identifier above renders only
+                              when present — a UTR nobody has is simply absent, and
+                              that is right, because nothing this week depends on
+                              finding it.
+                              The year end is the opposite: the practice's job before
+                              invitations is to FIND the clients without one and fill
+                              them in. A field you can only see by opening edit on
+                              every client is a field nobody fills.
+                              ⚠️ Company and LLP only. A sole trader has no accounting
+                              reference date, and "Not set" against one would be an
+                              instruction to enter something that does not exist.
+                            */}
+                            {(entity === 'limited_company' || entity === 'llp') && (
+                                <div className="text-[11px] text-slate-500">
+                                    Year end{' '}
+                                    {readArd(client).day && readArd(client).month ? (
+                                        <span className="font-mono text-slate-700">
+                                            {readArd(client).day} {MONTHS[Number(readArd(client).month) - 1]}
+                                        </span>
+                                    ) : (
+                                        <span className="text-amber-600 font-medium">Not set</span>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
